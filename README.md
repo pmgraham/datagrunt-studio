@@ -31,11 +31,12 @@ Locally" above.
 Container](https://github.com/apple/container) when its `container` CLI is
 installed (macOS), otherwise Docker Compose.
 
-    make build   # build both images (slow the first time; cached after)
-    make up      # stage credentials + start backend & frontend; UI at http://localhost:3000
+    make up      # build images as needed (slow the first time; cached after),
+                 # stage credentials, start backend & frontend; UI at http://localhost:3000
     make logs    # print logs
     make down    # stop and remove
     make status  # list containers
+    make build   # build the images without starting anything
 
 Optional config: `cp .env.example .env` and fill in `GEMINI_API_KEY` (AI
 PDF parsing). GCS import needs no configuration — if you have run `gcloud

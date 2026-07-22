@@ -58,7 +58,9 @@ build: check-cli
 # secrets dir and point GOOGLE_APPLICATION_CREDENTIALS at adc.json inside.
 # A host-side Ollama daemon is reached via the vmnet host gateway
 # (192.168.64.1 on a default install); override with OLLAMA_HOST in .env.
-up: stage-adc
+# `up` depends on `build` for parity with the Docker path's `up --build`:
+# images are (re)built as needed, and layer caching keeps no-change runs fast.
+up: stage-adc build
 	@mkdir -p $(DATA_DIR)
 	container run --detach --name $(BACKEND_NAME) \
 	  --volume $(DATA_DIR):/data \
