@@ -30,7 +30,6 @@ GEMINI.md
 .antigravity_latest_session
 .superpowers/
 .github/copilot-instructions.md
-assets/.aistudio/
 
 # Tool caches
 .pytest_cache/
