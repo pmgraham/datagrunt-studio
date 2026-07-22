@@ -2,10 +2,10 @@
 FROM node:22-alpine AS builder
 
 WORKDIR /build
-# package-lock.json is committed (app convention, #18); the glob tolerates
-# older checkouts that predate it.
-COPY package.json package-lock.json* ./
-RUN npm install
+# package-lock.json is committed (app convention, #18); npm ci fails loudly
+# if it is missing or stale.
+COPY package.json package-lock.json ./
+RUN npm ci
 
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1

@@ -6,10 +6,10 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_PYTHON_DOWNLOADS=never
 
 WORKDIR /build
-# uv.lock is committed (app convention, #18); the glob tolerates older
-# checkouts that predate it, where uv sync resolves fresh.
-COPY pyproject.toml uv.lock* ./
-RUN uv sync --no-dev --no-install-project
+# uv.lock is committed (app convention, #18); --frozen fails loudly if it
+# is missing or stale.
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
 
 # Runtime stage: venv + application code only.
 FROM python:3.12-slim-bookworm
