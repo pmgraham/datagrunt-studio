@@ -13,6 +13,12 @@ services:
       # ADC is staged by scripts/stage_adc.sh (run via `make up`). When no
       # credentials are staged the backend degrades to a friendly hint.
       GOOGLE_APPLICATION_CREDENTIALS: /secrets/adc.json
+      # Ollama runs on the HOST; inside the container localhost is the
+      # container itself, so default to the host gateway (mapped below so
+      # the default also works on Linux, not just Docker Desktop).
+      OLLAMA_HOST: ${OLLAMA_HOST:-http://host.docker.internal:11434}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - studio-data:/data
       - ./.container-secrets/mount:/secrets:ro

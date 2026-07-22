@@ -56,6 +56,8 @@ build: check-cli
 # Apple Container 1.1.0's --mount only accepts a directory as source (a
 # file path errors with "is not a directory"), so we mount the staged
 # secrets dir and point GOOGLE_APPLICATION_CREDENTIALS at adc.json inside.
+# A host-side Ollama daemon is reached via the vmnet host gateway
+# (192.168.64.1 on a default install); override with OLLAMA_HOST in .env.
 up: stage-adc
 	@mkdir -p $(DATA_DIR)
 	container run --detach --name $(BACKEND_NAME) \
@@ -63,6 +65,7 @@ up: stage-adc
 	  $(if $(GEMINI_API_KEY),--env GEMINI_API_KEY=$(GEMINI_API_KEY)) \
 	  --mount type=bind,source=$(SECRETS_DIR),target=/secrets,readonly \
 	  --env GOOGLE_APPLICATION_CREDENTIALS=/secrets/adc.json \
+	  --env OLLAMA_HOST=$(or $(OLLAMA_HOST),http://192.168.64.1:11434) \
 	  $(BACKEND_IMAGE)
 	@backend_ip=$$(container inspect $(BACKEND_NAME) | jq -r '.[0].status.networks[0].ipv4Address' | cut -d/ -f1); \
 	echo "backend at $$backend_ip:8000 - waiting for health..."; \

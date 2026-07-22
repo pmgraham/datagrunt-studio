@@ -44,6 +44,14 @@ container-readable copy of your credentials in `.container-secrets/`
 (gitignored; refreshed on every `make up`). Set `GOOGLE_ADC_FILE` in
 `.env` only if your ADC file lives somewhere non-standard.
 
+**Local Ollama** (the AI PDF Extractor's "Use local LLM" option): `make up`
+points the backend container at the host's Ollama daemon automatically —
+but from a container, `localhost` is the container itself, so the *host*
+daemon must listen on a non-loopback interface for the container to reach
+it: start it with `OLLAMA_HOST=0.0.0.0 ollama serve` (native runs need no
+such step). Set `OLLAMA_HOST` in `.env` only if your daemon lives at a
+non-default address.
+
 **macOS / Apple Container one-time setup:** `container system start` (add
 `--enable-kernel-install` if it reports no kernel is configured). Startup
 after the first build takes only a few seconds — the images boot as
