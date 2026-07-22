@@ -1,0 +1,6 @@
+id,sku_name,price_unit,region_id,timestamp,status
+921,Titanium Extrusion A-1,1240.00,US-E1,2023-10-12,VALID
+922,Steel Reinforcement C-2,840.50,EU-W1,2023-10-12,VALID
+923,Polymer Compound P-9,3120.00,AS-N2,2023-10-13,VALID
+924,Carbon Fiber Sheet X,2100.00,US-E1,2023-10-13,PENDING
+925,Aluminum Casting T-4,450.00,EU-S2,2023-10-14,VALID

@@ -1,0 +1,50 @@
+node_modules/
+.next/
+coverage/
+.DS_Store
+*.log
+.env*
+!.env.example
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# AI assistant & editor tool artifacts — local only, never public
+# (CLAUDE.md at the repo root is the tracked public playbook; everything else stays local)
+.claude/
+.cursor/
+.vscode/
+.idea/
+.gemini/
+.geminirules
+GEMINI.md
+.aider*
+.windsurf/
+.codeium/
+.antigravity_sessions/
+.antigravity_brain/
+.antigravity_latest_session
+.superpowers/
+.github/copilot-instructions.md
+assets/.aistudio/
+
+# Tool caches
+.pytest_cache/
+.ruff_cache/
+
+# Local container run state (Makefile / Apple Container)
+.container-data/
+
+# Staged Google ADC copy (scripts/stage_adc.sh)
+.container-secrets/
+
+# Local working docs — plans/specs/review notes stay out of the public repo
+docs/superpowers/
+docs/*-design.md
+
+# Experimental semantic-layer/BI stack — local only until its product fit is decided
+cube/

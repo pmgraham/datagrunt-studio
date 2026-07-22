@@ -1,0 +1,41 @@
+name: Bug report
+description: Something isn't working
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: Steps to reproduce, expected behavior, actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: file-details
+    attributes:
+      label: File details (if data-related)
+      description: File type (CSV/Excel/PDF), rough size, and anything unusual about it (delimiters, encodings, merged cells, scanned pages). Do NOT attach files containing sensitive data.
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit
+      placeholder: e.g. 0.1.0 or main @ abc1234
+    validations:
+      required: false
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: OS, browser, Node version, Python version
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Backend/browser console output. Redact anything sensitive.
+      render: shell
+    validations:
+      required: false

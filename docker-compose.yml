@@ -1,0 +1,38 @@
+services:
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      # Vertex AI fallback (used when GEMINI_API_KEY is unset): gcloud is not
+      # in the image, so pass the project/location through from .env — else
+      # pdf_service._detect_gcp_project() falls back to the "my-project"
+      # placeholder and Vertex calls 403.
+      GCP_PROJECT: ${GCP_PROJECT:-}
+      GCP_LOCATION: ${GCP_LOCATION:-}
+      # ADC is staged by scripts/stage_adc.sh (run via `make up`). When no
+      # credentials are staged the backend degrades to a friendly hint.
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/adc.json
+    volumes:
+      - studio-data:/data
+      - ./.container-secrets/mount:/secrets:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  frontend:
+    build: .
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  studio-data:

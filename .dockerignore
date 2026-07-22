@@ -1,0 +1,17 @@
+.git
+node_modules
+.next
+coverage
+*.log
+*.tsbuildinfo
+.env*
+backend
+docs
+.claude
+.container-data
+Dockerfile
+docker-compose.yml
+Makefile
+cube
+.pytest_cache
+.superpowers

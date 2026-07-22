@@ -1,0 +1,107 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: pytest + ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tesseract (for PDF OCR tests)
+        run: sudo apt-get update && sudo apt-get install -y tesseract-ocr
+
+      - name: Sync venv from committed lock (dev extras)
+        working-directory: backend
+        # setup-uv exports VIRTUAL_ENV at the repo root; our project lives in
+        # backend/, so point uv at the venv the later steps invoke. --frozen
+        # installs exactly what uv.lock pins and fails loudly if it's stale.
+        env:
+          VIRTUAL_ENV: ${{ github.workspace }}/backend/.venv
+        run: uv sync --frozen --extra dev
+
+      - name: pytest
+        working-directory: backend
+        run: .venv/bin/pytest -q
+
+      - name: ruff lint (blocking)
+        working-directory: backend
+        run: .venv/bin/ruff check app tests
+
+      - name: ruff format check (blocking)
+        working-directory: backend
+        run: .venv/bin/ruff format --check .
+
+  frontend:
+    name: eslint + vitest + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      # Lock files are committed (app convention, #18): npm ci installs the
+      # exact pinned tree and fails if the lock is out of sync with package.json.
+      - name: npm ci
+        run: npm ci
+
+      - name: eslint
+        run: npm run lint
+
+      - name: vitest
+        run: npm test
+
+      - name: next build
+        run: npm run build
+
+  audit:
+    name: dependency audit (advisory)
+    runs-on: ubuntu-latest
+    # Advisory, NOT blocking: a newly published advisory in a transitive
+    # dependency must not break CI overnight. Findings surface in the step
+    # logs; promote to blocking once a clean baseline + an ignore-list of
+    # accepted advisories is curated.
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          python-version: "3.12"
+
+      - name: pip-audit
+        continue-on-error: true
+        working-directory: backend
+        env:
+          VIRTUAL_ENV: ${{ github.workspace }}/backend/.venv
+        # ``pip`` is installed alongside because pip-audit's environment source
+        # enumerates installed dists via pip (uv venvs omit pip by default).
+        # Audits the exact pinned tree from the committed lock.
+        run: |
+          uv sync --frozen
+          uv pip install pip-audit pip
+          .venv/bin/pip-audit
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: npm audit
+        continue-on-error: true
+        run: |
+          npm ci
+          npm audit

@@ -1,0 +1,61 @@
+[project]
+name = "datagrunt-studio-backend"
+version = "0.1.0"
+description = "FastAPI sidecar powering Datagrunt Studio"
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Martin Graham" }]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Framework :: FastAPI",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+]
+dependencies = [
+    "datagrunt[pdf]>=4.5.4",
+    "duckdb>=1.0",
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "python-multipart>=0.0.9",
+    "google-genai>=2.10.0",
+    "google-cloud-storage>=2.16",
+    "google-cloud-resource-manager>=1.18.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "httpx>=0.27", "ruff>=0.15", "pre-commit>=4.0.0"]
+
+[project.urls]
+Homepage = "https://www.datagrunt.io"
+Repository = "https://github.com/pmgraham/datagrunt-studio"
+Issues = "https://github.com/pmgraham/datagrunt-studio/issues"
+Changelog = "https://github.com/pmgraham/datagrunt-studio/blob/main/CHANGELOG.md"
+
+# seed/ (sample data files) sits beside app/, so flat-layout auto-discovery
+# refuses to guess; name the package explicitly.
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle errors
+    "W",  # pycodestyle warnings
+    "F",  # pyflakes
+    "I",  # isort
+]
+ignore = ["E203"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"

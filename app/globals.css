@@ -1,0 +1,82 @@
+@import "tailwindcss";
+
+@theme {
+  --color-slate-950: #0F172A;
+  --color-slate-900: #1E293B;
+  --color-slate-800: #334155;
+  --color-slate-700: #475569;
+  --color-slate-600: #64748B;
+  --color-brand-blue: #2563EB;
+  --color-brand-indigo: #4F46E5;
+  --color-brand-violet: #7C3AED;
+}
+
+/* Custom Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: #F8FAFC;
+}
+::-webkit-scrollbar-thumb {
+  background: #E2E8F0;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3B82F6;
+}
+
+/* Styling root element and body to default to light mode */
+html, body {
+  background-color: #F8FAFC;
+  color: #1E293B;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* Glassmorphism Styles */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(59, 130, 246, 0.08);
+}
+
+.glass-panel-accent {
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(99, 102, 241, 0.15);
+  box-shadow: 0 4px 20px rgba(99, 102, 241, 0.04);
+}
+
+.glow-border {
+  position: relative;
+}
+.glow-border::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(139, 92, 246, 0.15));
+  border-radius: inherit;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.5;
+  transition: opacity 0.3s ease;
+}
+.glow-border:hover::after {
+  opacity: 1;
+}
+
+/* Code Panel Customization */
+.code-mono {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+@media (min-width: 1024px) {
+  .pdf-workspace-grid {
+    grid-template-columns: 75% 1fr !important;
+  }
+}
+
