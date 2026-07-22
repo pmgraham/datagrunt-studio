@@ -5,7 +5,6 @@
 # is 0600). Secrets live outside .container-data deliberately: that dir is
 # bind-mounted read-write at /data on the Apple Container path, and the
 # staged copy must not be reachable — let alone writable — through it.
-# Spec: docs/superpowers/specs/2026-07-21-seamless-adc-design.md
 #
 # Exit 0: staged, or no ADC found (GCS features stay off).
 # Exit 1: an ADC file was configured or found but is unusable.

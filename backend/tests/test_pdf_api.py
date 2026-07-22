@@ -1,7 +1,6 @@
 """Endpoint tests for rationalized-output persistence.
 
-The LLM call is monkeypatched — these tests cover the save path only
-(spec: docs/superpowers/specs/2026-07-14-raw-rationalized-datasets-design.md).
+The LLM call is monkeypatched — these tests cover the save path only.
 """
 
 import io
