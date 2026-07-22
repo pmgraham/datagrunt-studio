@@ -6,8 +6,8 @@ ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
     UV_PYTHON_DOWNLOADS=never
 
 WORKDIR /build
-# uv.lock is untracked; the glob copies it when present, and uv sync
-# resolves fresh when it is absent.
+# uv.lock is committed (app convention, #18); the glob tolerates older
+# checkouts that predate it, where uv sync resolves fresh.
 COPY pyproject.toml uv.lock* ./
 RUN uv sync --no-dev --no-install-project
 
