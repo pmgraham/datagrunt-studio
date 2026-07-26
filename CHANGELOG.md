@@ -8,6 +8,11 @@ Release tags use bare semver (`0.1.0`, no `v` prefix).
 
 ## [Unreleased]
 
+- **Changed:** the session DuckDB connection is now confined to the session data
+  directory. External file access is disabled and the allow-list is locked, so
+  session SQL can no longer reach paths outside it — a query that reads or writes
+  an arbitrary location (`read_csv`, `COPY … TO`) now fails. Studio's own ingest
+  and export paths are unaffected; they already live under the data directory.
 - **Changed:** the default session data directory moved from `/tmp/datagrunt-studio`
   to `$XDG_DATA_HOME/datagrunt-studio` (falling back to `~/.local/share/datagrunt-studio`)
   and is now created mode `0700`. `/tmp` was readable by every local account.
