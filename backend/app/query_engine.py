@@ -124,8 +124,30 @@ class QueryEngine:
             with self._lock:
                 if self._con_obj is None:
                     self._db_path.parent.mkdir(parents=True, exist_ok=True)
-                    self._con_obj = duckdb.connect(str(self._db_path))
+                    con = duckdb.connect(str(self._db_path))
+                    self._apply_sandbox(con)
+                    self._con_obj = con
         return self._con_obj
+
+    def _apply_sandbox(self, con) -> None:
+        """Confine this connection's filesystem reach to the session data dir.
+
+        Session SQL is user input by design, and DuckDB's defaults let it read
+        and write anywhere the process can — including the mounted cloud
+        credentials at /secrets/adc.json. Studio only ever touches files under
+        the data dir, so nothing legitimate is lost.
+
+        The order is load-bearing and cannot be rearranged:
+          * allowed_directories can only be set once the database is running,
+            never through duckdb.connect(config=...);
+          * enable_external_access can only be turned OFF at runtime, never
+            back on, and the allow-list does nothing until it is off;
+          * lock_configuration must come last, or session SQL could simply
+            widen the list again.
+        """
+        con.execute("SET allowed_directories=?", [[str(self._db_path.parent)]])
+        con.execute("SET enable_external_access=false")
+        con.execute("SET lock_configuration=true")
 
     @property
     def catalog(self):
