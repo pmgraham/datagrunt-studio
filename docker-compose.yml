@@ -35,7 +35,10 @@ services:
     environment:
       BACKEND_URL: http://backend:8000
     ports:
-      - "3000:3000"
+      # Loopback only: the frontend proxies unauthenticated to the backend,
+      # which assumes a single trusted local user (SECURITY.md). Publishing on
+      # 0.0.0.0 would hand that API to the whole network.
+      - "127.0.0.1:3000:3000"
     depends_on:
       backend:
         condition: service_healthy
