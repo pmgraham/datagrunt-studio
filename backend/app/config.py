@@ -12,6 +12,7 @@ class Settings:
     result_row_cap: int = 200
     backend_host: str = "127.0.0.1"
     backend_port: int = 8000
+    gcs_allowed_buckets: frozenset[str] = frozenset()
 
 
 def default_data_dir() -> Path:
@@ -79,8 +80,23 @@ def ensure_private_dir(path: Path, *, strict_ownership: bool = True) -> None:
         logger.warning("Could not tighten permissions on data directory %s: %s", path, exc)
 
 
+def _parse_allowed_buckets(raw: str | None) -> frozenset[str]:
+    """Parse STUDIO_GCS_ALLOWED_BUCKETS: comma-separated, blank entries discarded.
+
+    These are export destinations permitted *in addition to* the buckets the
+    caller's own credentials can list -- for a bucket granted directly outside
+    the operator's own projects. It never replaces that check.
+    """
+    if not raw:
+        return frozenset()
+    return frozenset(name.strip() for name in raw.split(",") if name.strip())
+
+
 def load_settings() -> Settings:
     configured = os.environ.get("STUDIO_DATA_DIR")
     data_dir = Path(configured).resolve() if configured else default_data_dir().resolve()
     ensure_private_dir(data_dir, strict_ownership=configured is None)
-    return Settings(data_dir=data_dir)
+    return Settings(
+        data_dir=data_dir,
+        gcs_allowed_buckets=_parse_allowed_buckets(os.environ.get("STUDIO_GCS_ALLOWED_BUCKETS")),
+    )

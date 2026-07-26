@@ -134,3 +134,18 @@ def test_load_settings_default_dir_still_rejects_foreign_ownership(monkeypatch, 
 def test_env_override_still_wins(monkeypatch, tmp_path):
     monkeypatch.setenv("STUDIO_DATA_DIR", str(tmp_path / "explicit"))
     assert load_settings().data_dir == (tmp_path / "explicit").resolve()
+
+
+def test_allowed_buckets_defaults_to_empty(monkeypatch):
+    monkeypatch.delenv("STUDIO_GCS_ALLOWED_BUCKETS", raising=False)
+    assert load_settings().gcs_allowed_buckets == frozenset()
+
+
+def test_allowed_buckets_parses_a_comma_separated_list(monkeypatch):
+    monkeypatch.setenv("STUDIO_GCS_ALLOWED_BUCKETS", "partner-drop, vendor-inbox")
+    assert load_settings().gcs_allowed_buckets == frozenset({"partner-drop", "vendor-inbox"})
+
+
+def test_allowed_buckets_discards_blank_entries(monkeypatch):
+    monkeypatch.setenv("STUDIO_GCS_ALLOWED_BUCKETS", "alpha,,   ,beta")
+    assert load_settings().gcs_allowed_buckets == frozenset({"alpha", "beta"})

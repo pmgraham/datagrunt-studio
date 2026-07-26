@@ -172,3 +172,4 @@ class GcsExportRequest(BaseModel):
     format: str
     bucket: str
     path: str = ""
+    project: str

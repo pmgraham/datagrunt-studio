@@ -126,3 +126,37 @@ def test_list_objects_includes_excel_suffixes(monkeypatch):
     monkeypatch.setattr(gcs_service, "_client", lambda project=None: FakeClient())
     listing = gcs_service.list_objects("alpha", "docs/")
     assert [f.name for f in listing["files"]] == ["docs/a.xlsx", "docs/b.xls"]
+
+
+def test_assert_upload_allowed_accepts_a_bucket_in_the_project(monkeypatch):
+    monkeypatch.setattr(gcs_service, "list_buckets", lambda project=None: ["alpha", "beta"])
+    gcs_service.assert_upload_allowed("alpha", "proj")
+
+
+def test_assert_upload_allowed_rejects_a_bucket_outside_the_project(monkeypatch):
+    monkeypatch.setattr(gcs_service, "list_buckets", lambda project=None: ["alpha"])
+    with pytest.raises(gcs_service.GcsDestinationError) as excinfo:
+        gcs_service.assert_upload_allowed("attacker-bucket", "proj")
+    message = str(excinfo.value)
+    assert "attacker-bucket" in message
+    assert "STUDIO_GCS_ALLOWED_BUCKETS" in message
+
+
+def test_assert_upload_allowed_forwards_the_project_to_list_buckets(monkeypatch):
+    seen = {}
+
+    def fake_list(project=None):
+        seen["project"] = project
+        return ["alpha"]
+
+    monkeypatch.setattr(gcs_service, "list_buckets", fake_list)
+    gcs_service.assert_upload_allowed("alpha", "my-proj")
+    assert seen["project"] == "my-proj"
+
+
+def test_assert_upload_allowed_honours_the_allowlist_without_listing(monkeypatch):
+    def boom(project=None):
+        raise AssertionError("list_buckets must not be called for an allowlisted bucket")
+
+    monkeypatch.setattr(gcs_service, "list_buckets", boom)
+    gcs_service.assert_upload_allowed("partner-drop", "proj", frozenset({"partner-drop"}))

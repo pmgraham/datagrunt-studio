@@ -8,6 +8,11 @@ Release tags use bare semver (`0.1.0`, no `v` prefix).
 
 ## [Unreleased]
 
+- **Changed (breaking for direct API callers):** `POST /gcs/export` now requires a
+  `project` field, and refuses any destination bucket that is not listable in that
+  project. Set `STUDIO_GCS_ALLOWED_BUCKETS` (comma-separated) to permit a bucket
+  granted outside your own projects. The export dialog sends the project it already
+  asks for, so the UI is unaffected.
 - **Changed:** the session DuckDB connection is now confined to the session data
   directory. External file access is disabled and the allow-list is locked, so
   session SQL can no longer reach paths outside it — a query that reads or writes
