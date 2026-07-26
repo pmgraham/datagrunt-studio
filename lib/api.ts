@@ -433,6 +433,7 @@ export interface GcsExportRequestBody {
   format: GcsExportFormat;
   bucket: string;
   path: string;
+  project: string;
 }
 
 export async function exportToGcs(body: GcsExportRequestBody): Promise<string> {

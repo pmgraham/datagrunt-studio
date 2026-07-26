@@ -216,10 +216,19 @@ describe('gcs api client', () => {
   it('exportToGcs returns the uri and surfaces backend detail on failure', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({ uri: 'gs://alpha/out.csv' }) })) as any);
     const { exportToGcs } = await import('./api');
-    expect(await exportToGcs({ sql: 'SELECT 1', format: 'csv', bucket: 'alpha', path: 'out' })).toBe('gs://alpha/out.csv');
+    expect(await exportToGcs({ sql: 'SELECT 1', format: 'csv', bucket: 'alpha', path: 'out', project: 'my-proj' })).toBe('gs://alpha/out.csv');
 
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, json: async () => ({ detail: 'No Google Cloud credentials found' }) })) as any);
-    await expect(exportToGcs({ sql: 'SELECT 1', format: 'csv', bucket: 'alpha', path: 'out' }))
+    await expect(exportToGcs({ sql: 'SELECT 1', format: 'csv', bucket: 'alpha', path: 'out', project: 'my-proj' }))
       .rejects.toThrow('No Google Cloud credentials found');
+  });
+
+  it('exportToGcs posts the project so the backend can check the destination', async () => {
+    const spy = vi.fn(async () => ({ ok: true, json: async () => ({ uri: 'gs://alpha/out.csv' }) }));
+    vi.stubGlobal('fetch', spy as any);
+    const { exportToGcs } = await import('./api');
+    await exportToGcs({ sql: 'SELECT 1', format: 'csv', bucket: 'alpha', path: 'out', project: 'my-proj' });
+    const body = JSON.parse((spy.mock.calls[0] as any)[1].body);
+    expect(body.project).toBe('my-proj');
   });
 });

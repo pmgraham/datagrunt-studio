@@ -75,7 +75,7 @@ export default function GcsExportDialog({ source, baseName, onClose }: GcsExport
     setError(null);
     setUri(null);
     try {
-      const result = await exportToGcs({ ...source, format, bucket, path });
+      const result = await exportToGcs({ ...source, format, bucket, path, project });
       setUri(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
