@@ -22,6 +22,7 @@ import { DEFAULT_PAGE_SIZE } from '@/lib/pagination';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { ImportPreviewPanel } from '@/components/ImportPreviewPanel';
 import { seedReadOptions, confirmOptionFields, sanitizeSkipRows, type SheetReadOptions } from '@/lib/import-read-options';
+import { tokenizeInlineMarkdown } from '@/lib/inline-markdown';
 
 const SqlEditor = dynamic(() => import('@/components/SqlEditor'), {
   ssr: false,
@@ -102,41 +103,35 @@ function quoteTableIdent(table: string): string {
 }
 
 function parseInlineMarkdown(text: string, docId?: string): React.ReactNode {
-  const regex = /(\!\[.*?\]\(.*?\)|Reference:\s*.*?|\*\*.*?\*\*|\*.*?\*|`.*?`)/g;
-  const splitParts = text.split(regex);
-  
-  return splitParts.map((part, index) => {
-    if (part.startsWith('![') && part.includes('](')) {
-      const match = part.match(/^\!\[(.*?)\]\((.*?)\)$/);
-      if (match) {
-        const alt = match[1];
-        const src = match[2];
-        const filename = src.split('/').pop() || src;
-        if (docId) {
-          return (
-            <span key={index} className="block my-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img 
-                src={`/api/pdf/image/${docId}/${filename}`} 
-                alt={alt} 
-                className="max-w-[400px] max-h-[300px] object-contain rounded-lg border border-slate-200/80 shadow-sm hover:scale-102 transition-transform duration-200" 
-              />
-              {alt && <span className="block text-[10px] text-slate-400 mt-1 italic text-center max-w-[400px]">{alt}</span>}
-            </span>
-          );
-        }
+  // Tokenizing lives in lib/inline-markdown.ts (bounded, unit tested); this
+  // function only maps tokens back to the original JSX and classNames.
+  return tokenizeInlineMarkdown(text).map((token, index) => {
+    switch (token.kind) {
+      case 'image': {
+        // No docId: keep the prior behaviour of showing raw markdown text.
+        if (!docId) return `![${token.alt}](${token.src})`;
+        const filename = token.src.split('/').pop() || token.src;
+        return (
+          <span key={index} className="block my-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={`/api/pdf/image/${docId}/${filename}`}
+              alt={token.alt}
+              className="max-w-[400px] max-h-[300px] object-contain rounded-lg border border-slate-200/80 shadow-sm hover:scale-102 transition-transform duration-200"
+            />
+            {token.alt && <span className="block text-[10px] text-slate-400 mt-1 italic text-center max-w-[400px]">{token.alt}</span>}
+          </span>
+        );
       }
+      case 'strong':
+        return <strong key={index} className="font-semibold text-slate-900">{token.value}</strong>;
+      case 'em':
+        return <em key={index} className="italic text-slate-800">{token.value}</em>;
+      case 'code':
+        return <code key={index} className="bg-slate-100 px-1 py-0.5 rounded text-[10px] font-mono text-red-600 font-semibold">{token.value}</code>;
+      default:
+        return token.value;
     }
-    if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={index} className="font-semibold text-slate-900">{part.slice(2, -2)}</strong>;
-    }
-    if (part.startsWith('*') && part.endsWith('*')) {
-      return <em key={index} className="italic text-slate-800">{part.slice(1, -1)}</em>;
-    }
-    if (part.startsWith('`') && part.endsWith('`')) {
-      return <code key={index} className="bg-slate-100 px-1 py-0.5 rounded text-[10px] font-mono text-red-600 font-semibold">{part.slice(1, -1)}</code>;
-    }
-    return part;
   });
 }
 
