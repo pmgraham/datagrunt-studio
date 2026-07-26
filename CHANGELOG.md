@@ -8,6 +8,11 @@ Release tags use bare semver (`0.1.0`, no `v` prefix).
 
 ## [Unreleased]
 
+- **Changed:** the default session data directory moved from `/tmp/datagrunt-studio`
+  to `$XDG_DATA_HOME/datagrunt-studio` (falling back to `~/.local/share/datagrunt-studio`)
+  and is now created mode `0700`. `/tmp` was readable by every local account.
+  Set `STUDIO_DATA_DIR` to override. Existing `/tmp` sessions are not migrated.
+
 ## [0.1.0] - 2026-07-22
 
 Initial public release.
