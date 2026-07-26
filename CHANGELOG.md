@@ -12,6 +12,12 @@ Release tags use bare semver (`0.1.0`, no `v` prefix).
   to `$XDG_DATA_HOME/datagrunt-studio` (falling back to `~/.local/share/datagrunt-studio`)
   and is now created mode `0700`. `/tmp` was readable by every local account.
   Set `STUDIO_DATA_DIR` to override. Existing `/tmp` sessions are not migrated.
+- **Fixed:** the AI PDF extraction preview cache (uploaded PDFs, extracted page
+  images, and rationalized schemas) moved from the shared `/tmp/aipx_preview`
+  into the private per-user session data directory. The old location was both
+  world-readable and, after the DuckDB sandbox change above, outside the
+  connection's allowed directories — which broke PDF extraction and
+  rationalization outright. Existing `/tmp` preview files are not migrated.
 
 ## [0.1.0] - 2026-07-22
 
