@@ -13,6 +13,7 @@ class Settings:
     backend_host: str = "127.0.0.1"
     backend_port: int = 8000
     gcs_allowed_buckets: frozenset[str] = frozenset()
+    gcs_allowed_projects: frozenset[str] = frozenset()
 
 
 def default_data_dir() -> Path:
@@ -80,12 +81,13 @@ def ensure_private_dir(path: Path, *, strict_ownership: bool = True) -> None:
         logger.warning("Could not tighten permissions on data directory %s: %s", path, exc)
 
 
-def _parse_allowed_buckets(raw: str | None) -> frozenset[str]:
-    """Parse STUDIO_GCS_ALLOWED_BUCKETS: comma-separated, blank entries discarded.
+def _parse_name_list(raw: str | None) -> frozenset[str]:
+    """Parse a comma-separated env var into a set of names, blanks discarded.
 
-    These are export destinations permitted *in addition to* the buckets the
-    caller's own credentials can list -- for a bucket granted directly outside
-    the operator's own projects. It never replaces that check.
+    Shared by STUDIO_GCS_ALLOWED_BUCKETS and STUDIO_GCS_ALLOWED_PROJECTS. Note
+    the two are *not* symmetric in meaning once parsed: an empty bucket list
+    permits no extra buckets, while an empty project list applies no project
+    restriction at all. See assert_upload_allowed for that distinction.
     """
     if not raw:
         return frozenset()
@@ -98,5 +100,6 @@ def load_settings() -> Settings:
     ensure_private_dir(data_dir, strict_ownership=configured is None)
     return Settings(
         data_dir=data_dir,
-        gcs_allowed_buckets=_parse_allowed_buckets(os.environ.get("STUDIO_GCS_ALLOWED_BUCKETS")),
+        gcs_allowed_buckets=_parse_name_list(os.environ.get("STUDIO_GCS_ALLOWED_BUCKETS")),
+        gcs_allowed_projects=_parse_name_list(os.environ.get("STUDIO_GCS_ALLOWED_PROJECTS")),
     )
