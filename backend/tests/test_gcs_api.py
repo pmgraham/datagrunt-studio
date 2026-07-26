@@ -1,10 +1,11 @@
 import shutil
+from dataclasses import replace
 from pathlib import Path
 
 import duckdb
 from fastapi.testclient import TestClient
 
-from app import gcs_service, pdf_service
+from app import gcs_service, main, pdf_service, session
 from app.main import app
 
 client = TestClient(app)
@@ -206,6 +207,8 @@ def test_gcs_export_dataset_csv_uploads_and_returns_uri(monkeypatch):
     sales_id = _reset_and_get_sales_id()
     captured = {}
 
+    monkeypatch.setattr(gcs_service, "list_buckets", lambda project=None: ["alpha"])
+
     def fake_upload(local_path, bucket, name):
         captured["existed"] = Path(local_path).exists()
         captured["bucket"], captured["name"] = bucket, name
@@ -220,6 +223,7 @@ def test_gcs_export_dataset_csv_uploads_and_returns_uri(monkeypatch):
             "format": "csv",
             "bucket": "alpha",
             "path": "exports/",
+            "project": "proj",
         },
     )
     assert resp.status_code == 200
@@ -231,6 +235,8 @@ def test_gcs_export_dataset_csv_uploads_and_returns_uri(monkeypatch):
 def test_gcs_export_sql_json_format(monkeypatch):
     client.post("/session/reset")
     captured = {}
+
+    monkeypatch.setattr(gcs_service, "list_buckets", lambda project=None: ["alpha"])
 
     def fake_upload(local_path, bucket, name):
         captured["suffix"] = Path(local_path).suffix
@@ -245,6 +251,7 @@ def test_gcs_export_sql_json_format(monkeypatch):
             "format": "json",
             "bucket": "alpha",
             "path": "out",
+            "project": "proj",
         },
     )
     assert resp.status_code == 200
@@ -260,6 +267,7 @@ def test_gcs_export_rejects_bad_format():
             "format": "xlsx",
             "bucket": "alpha",
             "path": "out",
+            "project": "proj",
         },
     )
     assert resp.status_code == 400
@@ -273,12 +281,15 @@ def test_gcs_export_requires_bucket():
             "format": "csv",
             "bucket": "   ",
             "path": "out",
+            "project": "proj",
         },
     )
     assert resp.status_code == 400
 
 
 def test_gcs_export_upload_failure_maps_to_gcs_error(monkeypatch):
+    monkeypatch.setattr(gcs_service, "list_buckets", lambda project=None: ["alpha"])
+
     def fake_upload(local_path, bucket, name):
         raise RuntimeError("network unreachable")
 
@@ -291,6 +302,7 @@ def test_gcs_export_upload_failure_maps_to_gcs_error(monkeypatch):
             "format": "csv",
             "bucket": "alpha",
             "path": "out",
+            "project": "proj",
         },
     )
     assert resp.status_code == 502
@@ -488,3 +500,89 @@ def test_gcs_import_xls_parses_real_legacy_workbook(monkeypatch):
     assert confirm.status_code == 200
     created = confirm.json()["datasets"]
     assert [d["sheet"] for d in created] == ["legacy"]
+
+
+def test_gcs_export_rejects_a_bucket_outside_the_project(monkeypatch):
+    monkeypatch.setattr(gcs_service, "list_buckets", lambda project=None: ["alpha"])
+
+    def fake_upload(local_path, bucket, name):
+        raise AssertionError("upload must not be attempted for a refused destination")
+
+    monkeypatch.setattr(gcs_service, "upload_file", fake_upload)
+
+    resp = client.post(
+        "/gcs/export",
+        json={
+            "sql": "SELECT 1 AS id",
+            "format": "csv",
+            "bucket": "attacker-bucket",
+            "path": "out",
+            "project": "proj",
+        },
+    )
+    assert resp.status_code == 403
+    assert "attacker-bucket" in resp.json()["detail"]
+
+
+def test_gcs_export_allows_an_allowlisted_bucket(monkeypatch):
+    monkeypatch.setattr(gcs_service, "list_buckets", lambda project=None: ["alpha"])
+    # Settings is a frozen dataclass: its generated __setattr__ rejects any
+    # attribute assignment on a direct instance, not just declared fields, so
+    # the field can't be patched in place. Swap the module-level SETTINGS
+    # reference itself for a copy with the field overridden -- replace() is
+    # the documented idiom for this ("especially useful for frozen classes").
+    monkeypatch.setattr(main, "SETTINGS", replace(main.SETTINGS, gcs_allowed_buckets=frozenset({"partner-drop"})))
+    monkeypatch.setattr(gcs_service, "upload_file", lambda p, b, n: f"gs://{b}/{n}")
+
+    resp = client.post(
+        "/gcs/export",
+        json={
+            "sql": "SELECT 1 AS id",
+            "format": "csv",
+            "bucket": "partner-drop",
+            "path": "out",
+            "project": "proj",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json()["uri"] == "gs://partner-drop/out.csv"
+
+
+def test_gcs_export_requires_a_project():
+    resp = client.post(
+        "/gcs/export",
+        json={"sql": "SELECT 1", "format": "csv", "bucket": "alpha", "path": "out", "project": "  "},
+    )
+    assert resp.status_code == 400
+
+
+def test_gcs_export_without_the_project_key_is_a_validation_error():
+    resp = client.post(
+        "/gcs/export",
+        json={"sql": "SELECT 1", "format": "csv", "bucket": "alpha", "path": "out"},
+    )
+    # `project: str` has no default, so Pydantic rejects the omitted key before
+    # the handler runs. A present-but-blank value is the 400 above.
+    assert resp.status_code == 422
+
+
+def test_gcs_export_refusal_writes_no_export_artifacts(monkeypatch):
+    monkeypatch.setattr(gcs_service, "list_buckets", lambda project=None: ["alpha"])
+    exports_dir = session.SESSION.parquet_dir.parent / "exports"
+    exports_dir.mkdir(parents=True, exist_ok=True)
+    before = sorted(p.name for p in exports_dir.iterdir())
+
+    resp = client.post(
+        "/gcs/export",
+        json={
+            "sql": "SELECT 1 AS id",
+            "format": "csv",
+            "bucket": "attacker-bucket",
+            "path": "out",
+            "project": "proj",
+        },
+    )
+    assert resp.status_code == 403
+    # Compare before/after rather than asserting the directory is empty --
+    # earlier tests in this session leave artifacts here.
+    assert sorted(p.name for p in exports_dir.iterdir()) == before

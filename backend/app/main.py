@@ -634,6 +634,15 @@ def gcs_export(req: GcsExportRequest) -> dict:
     bucket = req.bucket.strip()
     if not bucket:
         raise HTTPException(status_code=400, detail="bucket is required")
+    project = req.project.strip()
+    if not project:
+        raise HTTPException(status_code=400, detail="project is required")
+    try:
+        gcs.assert_upload_allowed(bucket, project, SETTINGS.gcs_allowed_buckets)
+    except gcs.GcsDestinationError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except Exception as exc:
+        raise _gcs_http_error(exc) from exc
     source_sql, basename = _resolve_source(req.datasetId, req.sql)
     object_name = gcs.resolve_object_name(req.path, basename, req.format)
 
