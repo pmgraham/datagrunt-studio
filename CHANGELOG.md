@@ -8,6 +8,19 @@ Release tags use bare semver (`0.1.0`, no `v` prefix).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-26
+
+Adds one opt-in control. `POST /gcs/export` already limited destinations to
+buckets your credentials can list in the project the request names — but the
+project arrives *in the request*, so the set of legal destinations was steerable
+by the caller. This release lets you pin that set yourself.
+
+It is **off by default**: an unconfigured deployment behaves exactly as 0.2.0
+did. Blocking every export out of the box was the alternative, and it is not a
+reasonable default for a tool meant to work after `gcloud auth`.
+
+### Added
+
 - **Added:** `STUDIO_GCS_ALLOWED_PROJECTS` (comma-separated) pins GCS export
   destinations to a set of projects you choose. The export request names the
   project it is writing to, so without this the set of legal destinations was
