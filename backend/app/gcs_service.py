@@ -120,10 +120,14 @@ def assert_upload_allowed(bucket: str, project: str, allowed_buckets: frozenset[
 
     Exporting is a credentialed write with a caller-chosen destination, so it is
     the one place a request can carry data *out* using the host's identity.
-    Exfiltration needs a destination the attacker can read; restricting uploads
-    to buckets the operator's own credentials already list means a forged
-    request can only write somewhere the operator already controls, which is
-    worth nothing to an attacker.
+    The guarantee is narrow, not sweeping: destinations are limited to buckets
+    the caller's credentials can list in the *named* project, which is why a
+    bucket the attacker merely owns is not reachable by default. It is not
+    airtight — an attacker who has already arranged for the operator's identity
+    to hold list access on a project they control (Google role grants take
+    effect immediately, with no acceptance step from the grantee) can still
+    satisfy this check with a bucket they can read. So this raises the bar
+    rather than eliminating the class of attack.
 
     The allowlist is checked first and short-circuits the API call, so a bucket
     granted directly outside the operator's own projects still works.
