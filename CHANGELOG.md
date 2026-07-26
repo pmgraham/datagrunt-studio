@@ -23,6 +23,17 @@ Release tags use bare semver (`0.1.0`, no `v` prefix).
   world-readable and, after the DuckDB sandbox change above, outside the
   connection's allowed directories — which broke PDF extraction and
   rationalization outright. Existing `/tmp` preview files are not migrated.
+- **Fixed:** the backend refused to start under `make up` on macOS. The
+  container bind-mounts `.container-data` (created on the host, owned by the
+  host user) into the backend container, which runs as a dedicated `studio`
+  user — so the data directory's owner never matches the running process,
+  and the ownership check added above hard-failed. That check now only
+  hard-fails for the *default* per-user data directory, which it exists to
+  protect from a symlink hijack; when `STUDIO_DATA_DIR` is set explicitly,
+  foreign ownership is expected (it is how bind mounts work) and is now
+  logged as a warning instead, with permission-tightening attempted
+  best-effort. The Docker Compose path was unaffected — it uses a named
+  volume that Docker initializes owned by the container user.
 
 ## [0.1.0] - 2026-07-22
 
