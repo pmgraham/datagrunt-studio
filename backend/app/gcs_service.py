@@ -22,6 +22,10 @@ class GcsCredentialsError(GcsError):
         super().__init__(CREDENTIALS_HINT)
 
 
+class GcsDestinationError(GcsError):
+    """The requested destination bucket is not an allowed export target."""
+
+
 @dataclass(frozen=True)
 class GcsObject:
     name: str
@@ -109,3 +113,26 @@ def download_object_bytes(bucket: str, name: str) -> bytes:
 def upload_file(local_path: Path, bucket: str, name: str) -> str:
     _client().bucket(bucket).blob(name).upload_from_filename(str(local_path))
     return f"gs://{bucket}/{name}"
+
+
+def assert_upload_allowed(bucket: str, project: str, allowed_buckets: frozenset[str] = frozenset()) -> None:
+    """Raise GcsDestinationError unless `bucket` is a permitted export destination.
+
+    Exporting is a credentialed write with a caller-chosen destination, so it is
+    the one place a request can carry data *out* using the host's identity.
+    Exfiltration needs a destination the attacker can read; restricting uploads
+    to buckets the operator's own credentials already list means a forged
+    request can only write somewhere the operator already controls, which is
+    worth nothing to an attacker.
+
+    The allowlist is checked first and short-circuits the API call, so a bucket
+    granted directly outside the operator's own projects still works.
+    """
+    if bucket in allowed_buckets:
+        return
+    if bucket in set(list_buckets(project)):
+        return
+    raise GcsDestinationError(
+        f"Bucket {bucket!r} is not an export destination for project {project!r}. "
+        "Choose a bucket in that project, or name it in STUDIO_GCS_ALLOWED_BUCKETS."
+    )
