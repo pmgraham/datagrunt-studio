@@ -115,7 +115,13 @@ def upload_file(local_path: Path, bucket: str, name: str) -> str:
     return f"gs://{bucket}/{name}"
 
 
-def assert_upload_allowed(bucket: str, project: str, allowed_buckets: frozenset[str] = frozenset()) -> None:
+def assert_upload_allowed(
+    bucket: str,
+    project: str,
+    *,
+    allowed_buckets: frozenset[str] = frozenset(),
+    allowed_projects: frozenset[str] = frozenset(),
+) -> None:
     """Raise GcsDestinationError unless `bucket` is a permitted export destination.
 
     Exporting is a credentialed write with a caller-chosen destination, so it is
@@ -129,11 +135,23 @@ def assert_upload_allowed(bucket: str, project: str, allowed_buckets: frozenset[
     satisfy this check with a bucket they can read. So this raises the bar
     rather than eliminating the class of attack.
 
+    The two allowlists are keyword-only because they mean OPPOSITE things when
+    empty, and a positional swap would invert the check with no type error:
+    an empty ``allowed_buckets`` permits no extra buckets, while an empty
+    ``allowed_projects`` applies no project restriction at all. Configuring
+    projects is what stops the legal destination set being derivable from the
+    request, since the project itself arrives in it.
+
     The allowlist is checked first and short-circuits the API call, so a bucket
     granted directly outside the operator's own projects still works.
     """
     if bucket in allowed_buckets:
         return
+    if allowed_projects and project not in allowed_projects:
+        raise GcsDestinationError(
+            f"Project {project!r} is not an allowed export destination. "
+            "Name it in STUDIO_GCS_ALLOWED_PROJECTS to permit exports to it."
+        )
     if bucket in set(list_buckets(project)):
         return
     raise GcsDestinationError(
