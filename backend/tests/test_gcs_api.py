@@ -598,3 +598,49 @@ def test_gcs_export_refusal_writes_no_export_artifacts(monkeypatch):
     )
     assert resp.status_code == 403
     assert _fingerprint() == before
+
+
+def test_gcs_export_rejects_a_project_outside_the_allowlist(monkeypatch):
+    monkeypatch.setattr(main, "SETTINGS", replace(main.SETTINGS, gcs_allowed_projects=frozenset({"allowed-proj"})))
+
+    def boom(project=None):
+        raise AssertionError("list_buckets must not be called for a refused project")
+
+    monkeypatch.setattr(gcs_service, "list_buckets", boom)
+
+    def fake_upload(local_path, bucket, name):
+        raise AssertionError("upload must not be attempted for a refused destination")
+
+    monkeypatch.setattr(gcs_service, "upload_file", fake_upload)
+
+    resp = client.post(
+        "/gcs/export",
+        json={
+            "sql": "SELECT 1 AS id",
+            "format": "csv",
+            "bucket": "alpha",
+            "path": "out",
+            "project": "attacker-proj",
+        },
+    )
+    assert resp.status_code == 403
+    assert "attacker-proj" in resp.json()["detail"]
+
+
+def test_gcs_export_allows_a_project_in_the_allowlist(monkeypatch):
+    monkeypatch.setattr(main, "SETTINGS", replace(main.SETTINGS, gcs_allowed_projects=frozenset({"allowed-proj"})))
+    monkeypatch.setattr(gcs_service, "list_buckets", lambda project=None: ["alpha"])
+    monkeypatch.setattr(gcs_service, "upload_file", lambda p, b, n: f"gs://{b}/{n}")
+
+    resp = client.post(
+        "/gcs/export",
+        json={
+            "sql": "SELECT 1 AS id",
+            "format": "csv",
+            "bucket": "alpha",
+            "path": "out",
+            "project": "allowed-proj",
+        },
+    )
+    assert resp.status_code == 200
+    assert resp.json()["uri"] == "gs://alpha/out.csv"
