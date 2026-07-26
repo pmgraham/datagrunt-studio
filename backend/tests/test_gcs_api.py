@@ -568,9 +568,23 @@ def test_gcs_export_without_the_project_key_is_a_validation_error():
 
 def test_gcs_export_refusal_writes_no_export_artifacts(monkeypatch):
     monkeypatch.setattr(gcs_service, "list_buckets", lambda project=None: ["alpha"])
+
+    def fake_upload(local_path, bucket, name):
+        raise AssertionError("upload must not be attempted for a refused destination")
+
+    monkeypatch.setattr(gcs_service, "upload_file", fake_upload)
+
     exports_dir = session.SESSION.parquet_dir.parent / "exports"
     exports_dir.mkdir(parents=True, exist_ok=True)
-    before = sorted(p.name for p in exports_dir.iterdir())
+
+    def _fingerprint():
+        # (name, size, mtime_ns) per file, not just name -- earlier tests in
+        # this session leave same-named artifacts here, and a refused export
+        # that overwrites one of them would go undetected by a name-only
+        # comparison.
+        return sorted((p.name, p.stat().st_size, p.stat().st_mtime_ns) for p in exports_dir.iterdir())
+
+    before = _fingerprint()
 
     resp = client.post(
         "/gcs/export",
@@ -583,6 +597,4 @@ def test_gcs_export_refusal_writes_no_export_artifacts(monkeypatch):
         },
     )
     assert resp.status_code == 403
-    # Compare before/after rather than asserting the directory is empty --
-    # earlier tests in this session leave artifacts here.
-    assert sorted(p.name for p in exports_dir.iterdir()) == before
+    assert _fingerprint() == before
