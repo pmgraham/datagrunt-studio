@@ -58,24 +58,46 @@ describe('tokenizeInlineMarkdown', () => {
   });
 
   it('scales linearly, not quadratically, as input size doubles', () => {
-    const timeToTokenize = (n: number) => {
+    // Take the FASTEST of several runs. Scheduling jitter and GC only ever add
+    // time, so the minimum is the best estimate of the real cost — averaging
+    // would let one noisy run dominate. An earlier version of this test timed a
+    // single run of ~0.7ms and divided by `Math.max(small, 1)`, which clamped
+    // the denominator while the numerator kept full noise; it failed on CI at a
+    // ratio of 5.7 with no regression present.
+    const timeToTokenize = (n: number, budgetMs = Infinity) => {
       const input = '![x'.repeat(n);
-      const start = performance.now();
-      tokenizeInlineMarkdown(input);
-      return performance.now() - start;
+      let fastest = Infinity;
+      for (let run = 0; run < 7; run += 1) {
+        const start = performance.now();
+        tokenizeInlineMarkdown(input);
+        const elapsed = performance.now() - start;
+        fastest = Math.min(fastest, elapsed);
+        // Bail once a single run blows the budget: a quadratic implementation
+        // takes seconds here, and repeating it six more times turns a clear
+        // failure into a worker timeout.
+        if (elapsed > budgetMs) break;
+      }
+      return fastest;
     };
 
     // Warm up the JIT so the first real measurement isn't penalized.
-    timeToTokenize(2_000);
+    timeToTokenize(5_000);
 
-    const small = timeToTokenize(20_000);
-    const large = timeToTokenize(40_000);
+    const small = timeToTokenize(100_000, 500);
 
-    // A quadratic implementation roughly quadruples when input doubles; a
-    // linear one roughly doubles. Generous slack (< 3, not < 2.2) keeps this
-    // robust to measurement noise while still catching a future quadratic
-    // regression structurally, instead of via a wall-clock threshold that
-    // just gets bumped next time.
-    expect(large / Math.max(small, 1)).toBeLessThan(3);
+    // A quadratic implementation is already seconds-slow at this size, so fail
+    // here with a legible number rather than spending a minute on the doubled
+    // input first. Linear runs in single-digit milliseconds, so the headroom is
+    // enormous and this cannot trip on slow hardware alone.
+    expect(small).toBeLessThan(500);
+
+    const large = timeToTokenize(200_000);
+
+    // Doubling the input roughly doubles a linear scan and roughly quadruples a
+    // quadratic one. Measured locally across 10 trials this ratio sits between
+    // 1.4 and 2.1, so a bound of 3 leaves real slack while still catching the
+    // structural regression — rather than pinning a wall-clock number that just
+    // gets bumped the next time it goes red.
+    expect(large / small).toBeLessThan(3);
   });
 });
