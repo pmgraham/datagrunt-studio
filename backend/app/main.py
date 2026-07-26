@@ -35,11 +35,13 @@ from app.api_models import (
     StagedSheetPreview,
     StatementResultDTO,
 )
+from app.origin_guard import OriginGuardMiddleware
 from app.query_engine import QueryEngine
 from app.session import SESSION, SETTINGS
 from app.session_registry import Dataset, base_table_name, to_snake_case
 
 app = FastAPI(title="Datagrunt Studio Backend")
+app.add_middleware(OriginGuardMiddleware)
 
 _EXCEL_SUFFIXES = {".xlsx", ".xls"}
 # Untyped formats go through the staged preview/confirm flow; parquet and
