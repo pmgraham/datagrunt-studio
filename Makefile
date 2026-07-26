@@ -77,7 +77,7 @@ up: stage-adc build
 	  sleep 1; \
 	done; \
 	container run --detach --name $(FRONTEND_NAME) \
-	  --publish 3000:3000 \
+	  --publish 127.0.0.1:3000:3000 \
 	  --env BACKEND_URL=http://$$backend_ip:8000 \
 	  $(FRONTEND_IMAGE)
 	@echo "Datagrunt Studio: http://localhost:3000"

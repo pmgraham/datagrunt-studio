@@ -40,6 +40,18 @@ def _rationalized_tables() -> list[str]:
     return sorted(d["table"] for d in datasets if d["schema_name"] == "rationalized")
 
 
+def _mock_extract(monkeypatch, output: dict) -> None:
+    """Replace the real datagrunt PDF parsing call: write `output` to the
+    extraction JSON path and return its text, mirroring extract_pdf's contract."""
+
+    def fake(doc_id):
+        text = json.dumps(output)
+        pdf_svc.json_path(doc_id).write_text(text)
+        return text
+
+    monkeypatch.setattr(pdf_svc, "extract_pdf", fake)
+
+
 def test_json_mode_saves_to_rationalized(monkeypatch):
     client.post("/session/reset")
     doc_id = _upload()
@@ -107,3 +119,21 @@ def test_uningestable_json_returns_unsaved(monkeypatch):
     assert data["dataset"] is None
     assert "Could not ingest" in data["save_error"]
     assert _rationalized_tables() == []
+
+
+def test_extract_saves_to_documents_schema(monkeypatch):
+    """Regression test for the PREVIEW_DIR path escape: extraction writes its
+    JSON under PREVIEW_DIR and then ingests it via DuckDB, which only allows
+    reads under the session data directory."""
+    client.post("/session/reset")
+    doc_id = _upload()
+    _mock_extract(monkeypatch, {"document": {"pages": []}})
+    resp = client.post(f"/pdf/extract/{doc_id}")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["images"] == []
+    assert data["page_images"] == []
+    datasets = client.get("/datasets").json()["datasets"]
+    doc_tables = [d["table"] for d in datasets if d["schema_name"] == "documents"]
+    assert len(doc_tables) == 1
+    assert doc_tables[0].endswith("documents.invoice_2024")

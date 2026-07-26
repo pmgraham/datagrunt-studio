@@ -10,14 +10,20 @@ import mimetypes
 import os
 import re
 import shutil
-import tempfile
 import time
 import uuid
 from pathlib import Path
 
 import requests
 
-PREVIEW_DIR = Path(tempfile.gettempdir()) / "aipx_preview"
+from app.session import SETTINGS
+
+# Uploaded PDFs, extracted images, and rationalized schemas live under the
+# private per-user session data directory (see app.config.default_data_dir),
+# not a shared /tmp path: the DuckDB sandbox only allows reads/writes under
+# SETTINGS.data_dir, and a world-readable /tmp path would leak every
+# uploaded document's contents to other local accounts.
+PREVIEW_DIR = SETTINGS.data_dir / "aipx_preview"
 _ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _MAX_AGE = 3600  # sweep temp files older than an hour
 _MAX_IMAGES = 16  # cap multimodal payload
