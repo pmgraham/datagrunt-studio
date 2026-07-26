@@ -1,6 +1,6 @@
 {
   "name": "datagrunt-studio",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "Explore, clean, join, and export CSV, Excel, and PDF data in your browser — no SQL required, powered by DuckDB and the datagrunt library. Runs entirely on your machine.",
   "license": "MIT",
