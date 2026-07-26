@@ -159,4 +159,43 @@ def test_assert_upload_allowed_honours_the_allowlist_without_listing(monkeypatch
         raise AssertionError("list_buckets must not be called for an allowlisted bucket")
 
     monkeypatch.setattr(gcs_service, "list_buckets", boom)
-    gcs_service.assert_upload_allowed("partner-drop", "proj", frozenset({"partner-drop"}))
+    gcs_service.assert_upload_allowed("partner-drop", "proj", allowed_buckets=frozenset({"partner-drop"}))
+
+
+def test_assert_upload_allowed_accepts_a_project_in_the_allowlist(monkeypatch):
+    monkeypatch.setattr(gcs_service, "list_buckets", lambda project=None: ["alpha"])
+    gcs_service.assert_upload_allowed("alpha", "proj", allowed_projects=frozenset({"proj"}))
+
+
+def test_assert_upload_allowed_rejects_a_project_outside_the_allowlist(monkeypatch):
+    def boom(project=None):
+        raise AssertionError("list_buckets must not be called for a refused project")
+
+    monkeypatch.setattr(gcs_service, "list_buckets", boom)
+    with pytest.raises(gcs_service.GcsDestinationError) as excinfo:
+        gcs_service.assert_upload_allowed("alpha", "attacker-proj", allowed_projects=frozenset({"proj"}))
+    message = str(excinfo.value)
+    assert "attacker-proj" in message
+    assert "STUDIO_GCS_ALLOWED_PROJECTS" in message
+
+
+def test_assert_upload_allowed_ignores_an_empty_project_allowlist(monkeypatch):
+    # Empty means "no project restriction" -- the opposite of what an empty
+    # bucket allowlist means. This pins that asymmetry.
+    monkeypatch.setattr(gcs_service, "list_buckets", lambda project=None: ["alpha"])
+    gcs_service.assert_upload_allowed("alpha", "any-project-at-all")
+
+
+def test_allowlisted_bucket_bypasses_a_project_restriction(monkeypatch):
+    # STUDIO_GCS_ALLOWED_BUCKETS exists for a bucket granted outside the
+    # operator's own projects, so a project restriction must not veto it.
+    def boom(project=None):
+        raise AssertionError("list_buckets must not be called for an allowlisted bucket")
+
+    monkeypatch.setattr(gcs_service, "list_buckets", boom)
+    gcs_service.assert_upload_allowed(
+        "partner-drop",
+        "some-other-project",
+        allowed_buckets=frozenset({"partner-drop"}),
+        allowed_projects=frozenset({"proj"}),
+    )

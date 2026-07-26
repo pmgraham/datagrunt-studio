@@ -8,6 +8,19 @@ Release tags use bare semver (`0.1.0`, no `v` prefix).
 
 ## [Unreleased]
 
+- **Added:** `STUDIO_GCS_ALLOWED_PROJECTS` (comma-separated) pins GCS export
+  destinations to a set of projects you choose. The export request names the
+  project it is writing to, so without this the set of legal destinations was
+  steerable by the request; configuring it makes that set yours alone. Unset
+  means no project restriction, so nothing changes unless you set it.
+  `STUDIO_GCS_ALLOWED_BUCKETS` still takes precedence for a specific bucket —
+  it exists for one granted outside your own projects. Both are read from the
+  environment rather than `.env` (its own rules forbid commas in values) and
+  are forwarded into both container paths — `docker-compose.yml`'s backend
+  service and `make up`'s Apple Container branch — so the restriction is
+  reachable under `make up`, the documented default on macOS, and not just
+  in native dev.
+
 ## [0.2.0] - 2026-07-26
 
 A security release. Studio's backend is a single-user local sidecar with no

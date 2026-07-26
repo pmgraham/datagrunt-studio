@@ -60,11 +60,17 @@ build: check-cli
 # (192.168.64.1 on a default install); override with OLLAMA_HOST in .env.
 # `up` depends on `build` for parity with the Docker path's `up --build`:
 # images are (re)built as needed, and layer caching keeps no-change runs fast.
+# STUDIO_GCS_ALLOWED_BUCKETS / STUDIO_GCS_ALLOWED_PROJECTS are comma-separated
+# lists, which conflicts with .env's own no-commas rule (see .env.example) --
+# export them in the shell environment instead; make picks up shell-exported
+# vars the same way it already does for GEMINI_API_KEY below.
 up: stage-adc build
 	@mkdir -p $(DATA_DIR)
 	container run --detach --name $(BACKEND_NAME) \
 	  --volume $(DATA_DIR):/data \
 	  $(if $(GEMINI_API_KEY),--env GEMINI_API_KEY=$(GEMINI_API_KEY)) \
+	  $(if $(STUDIO_GCS_ALLOWED_BUCKETS),--env STUDIO_GCS_ALLOWED_BUCKETS=$(STUDIO_GCS_ALLOWED_BUCKETS)) \
+	  $(if $(STUDIO_GCS_ALLOWED_PROJECTS),--env STUDIO_GCS_ALLOWED_PROJECTS=$(STUDIO_GCS_ALLOWED_PROJECTS)) \
 	  --mount type=bind,source=$(SECRETS_DIR),target=/secrets,readonly \
 	  --env GOOGLE_APPLICATION_CREDENTIALS=/secrets/adc.json \
 	  --env OLLAMA_HOST=$(or $(OLLAMA_HOST),http://192.168.64.1:11434) \

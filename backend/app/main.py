@@ -638,7 +638,12 @@ def gcs_export(req: GcsExportRequest) -> dict:
     if not project:
         raise HTTPException(status_code=400, detail="project is required")
     try:
-        gcs.assert_upload_allowed(bucket, project, SETTINGS.gcs_allowed_buckets)
+        gcs.assert_upload_allowed(
+            bucket,
+            project,
+            allowed_buckets=SETTINGS.gcs_allowed_buckets,
+            allowed_projects=SETTINGS.gcs_allowed_projects,
+        )
     except gcs.GcsDestinationError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
     except Exception as exc:

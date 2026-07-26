@@ -149,3 +149,18 @@ def test_allowed_buckets_parses_a_comma_separated_list(monkeypatch):
 def test_allowed_buckets_discards_blank_entries(monkeypatch):
     monkeypatch.setenv("STUDIO_GCS_ALLOWED_BUCKETS", "alpha,,   ,beta")
     assert load_settings().gcs_allowed_buckets == frozenset({"alpha", "beta"})
+
+
+def test_allowed_projects_defaults_to_empty(monkeypatch):
+    monkeypatch.delenv("STUDIO_GCS_ALLOWED_PROJECTS", raising=False)
+    assert load_settings().gcs_allowed_projects == frozenset()
+
+
+def test_allowed_projects_parses_a_comma_separated_list(monkeypatch):
+    monkeypatch.setenv("STUDIO_GCS_ALLOWED_PROJECTS", "analytics-prod, analytics-stage")
+    assert load_settings().gcs_allowed_projects == frozenset({"analytics-prod", "analytics-stage"})
+
+
+def test_allowed_projects_discards_blank_entries(monkeypatch):
+    monkeypatch.setenv("STUDIO_GCS_ALLOWED_PROJECTS", "one,,   ,two")
+    assert load_settings().gcs_allowed_projects == frozenset({"one", "two"})
