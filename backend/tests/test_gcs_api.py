@@ -314,6 +314,37 @@ def test_gcs_export_upload_failure_maps_to_gcs_error(monkeypatch, caplog):
     assert "network unreachable" in caplog.text
 
 
+def test_gcs_export_write_failure_does_not_leak_the_exception_text(monkeypatch, caplog):
+    """A write failure (as opposed to a bad-SQL failure) must not return the
+    server-side export path — export_parquet runs the user's SQL too, and a
+    SQL error there is passed through untouched, not curated."""
+    monkeypatch.setattr(gcs_service, "list_buckets", lambda project=None: ["alpha"])
+
+    sentinel = "/srv/secret-dir/exports/out.parquet"
+
+    def fail(sql, out_path):
+        raise duckdb.IOException(f"Cannot open file {sentinel}")
+
+    monkeypatch.setattr(session.SESSION.engine, "export_parquet", fail)
+
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post(
+            "/gcs/export",
+            json={
+                "sql": "SELECT 1 AS id",
+                "format": "csv",
+                "bucket": "alpha",
+                "path": "out",
+                "project": "proj",
+            },
+        )
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert sentinel not in detail
+    assert detail == "Could not write the export file. (IOException)"
+    assert sentinel in caplog.text
+
+
 def test_gcs_objects_kind_pdf_uses_pdf_suffixes(monkeypatch):
     captured = {}
 

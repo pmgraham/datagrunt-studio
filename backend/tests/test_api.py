@@ -2,6 +2,7 @@ import io
 import logging
 from pathlib import Path
 
+import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
@@ -230,15 +231,36 @@ def test_export_requires_exactly_one_source():
     assert both.status_code == 400
 
 
-def test_export_bad_sql_returns_400(caplog):
+def test_export_bad_sql_returns_400():
     client.post("/session/reset")
+    resp = client.post("/export", json={"sql": "SELECT * FROM nope_missing", "format": "csv"})
+    assert resp.status_code == 400
+    assert "nope_missing" in resp.json()["detail"]
+
+
+def test_export_write_failure_does_not_leak_the_exception_text(monkeypatch, caplog):
+    """A write failure (as opposed to a bad-SQL failure) must not return the
+    server-side export path — unlike test_export_bad_sql_returns_400, whose
+    DuckDB error is about the user's own SQL and is passed through untouched."""
+    from app.session import SESSION
+
+    client.post("/session/reset")
+
+    sentinel = "/srv/secret-dir/exports/out.parquet"
+
+    def fail(sql, out_path):
+        raise duckdb.IOException(f"Cannot open file {sentinel}")
+
+    monkeypatch.setattr(SESSION.engine, "export_parquet", fail)
+
     with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
-        resp = client.post("/export", json={"sql": "SELECT * FROM nope_missing", "format": "csv"})
+        resp = client.post("/export", json={"sql": "SELECT 1 AS x", "format": "csv"})
+
     assert resp.status_code == 400
     detail = resp.json()["detail"]
-    assert "nope_missing" not in detail
-    assert detail == "Could not write the export file. (CatalogException)"
-    assert "nope_missing" in caplog.text
+    assert sentinel not in detail
+    assert detail == "Could not write the export file. (IOException)"
+    assert sentinel in caplog.text
 
 
 def test_export_bad_format_returns_400():

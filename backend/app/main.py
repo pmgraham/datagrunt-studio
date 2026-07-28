@@ -519,8 +519,13 @@ def export_dataset(req: ExportRequest) -> FileResponse:
     parquet_out = exports_dir / f"{basename}.parquet"
     try:
         SESSION.engine.export_parquet(source_sql, parquet_out)
-    except duckdb.Error as exc:
+    # export_parquet runs the user's SQL as well as writing the file: a write
+    # failure can name the server-side path, but a SQL error is the user's own
+    # and is the only feedback they get.
+    except (duckdb.IOException, duckdb.PermissionException) as exc:
         raise http_error(400, "Could not write the export file.", exc) from exc
+    except duckdb.Error as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if req.format == "parquet":
         return FileResponse(
@@ -675,8 +680,13 @@ def gcs_export(req: GcsExportRequest) -> dict:
     parquet_out = exports_dir / f"{basename}.parquet"
     try:
         SESSION.engine.export_parquet(source_sql, parquet_out)
-    except duckdb.Error as exc:
+    # export_parquet runs the user's SQL as well as writing the file: a write
+    # failure can name the server-side path, but a SQL error is the user's own
+    # and is the only feedback they get.
+    except (duckdb.IOException, duckdb.PermissionException) as exc:
         raise http_error(400, "Could not write the export file.", exc) from exc
+    except duckdb.Error as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     if req.format == "csv":
         local_out = exports_dir / f"{basename}.csv"
