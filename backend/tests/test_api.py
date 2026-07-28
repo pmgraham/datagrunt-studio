@@ -1,4 +1,5 @@
 import io
+import logging
 from pathlib import Path
 
 import pytest
@@ -745,3 +746,34 @@ def test_confirm_import_defaults_still_work():
     )
     assert resp.status_code == 200
     assert resp.json()["errors"] == []
+
+
+def test_preview_error_does_not_leak_the_exception_text(monkeypatch, caplog):
+    """A parse failure must not return the path datagrunt failed on.
+
+    datagrunt and DuckDB quote the file in their errors, and staged uploads
+    live under the session's private data directory.
+    """
+    from app import datagrunt_service as svc_mod
+
+    sentinel = "/srv/secret-dir/staged/upload.csv"
+
+    def fail(_path):
+        raise ValueError(f"could not read {sentinel}: ragged preamble")
+
+    monkeypatch.setattr(svc_mod, "preview_file", fail)
+
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post(
+            "/datasets/preview",
+            files=[("files", ("up.csv", io.BytesIO(b"a,b\n1,2\n"), "text/csv"))],
+        )
+
+    assert resp.status_code == 200
+    error = resp.json()["files"][0]["error"]
+    assert error is not None
+    assert sentinel not in error
+    assert "ragged preamble" not in error
+    assert error.startswith("Could not parse with default settings.")
+    # The detail is not lost — it goes to the operator, not the client.
+    assert sentinel in caplog.text

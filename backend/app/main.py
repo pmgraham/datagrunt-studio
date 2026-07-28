@@ -35,6 +35,7 @@ from app.api_models import (
     StagedSheetPreview,
     StatementResultDTO,
 )
+from app.error_reporting import sanitized_detail
 from app.origin_guard import OriginGuardMiddleware
 from app.query_engine import QueryEngine
 from app.session import SESSION, SETTINGS
@@ -144,7 +145,10 @@ def _staged_preview_entry(staged_id: str, filename: str, dest: Path) -> dict:
             "columns": None,
             "columns_normalized": None,
             "rows": None,
-            "error": f"Could not parse with default settings: {exc}",
+            "error": sanitized_detail(
+                "Could not parse with default settings. Try adjusting skip rows or picking a different header row.",
+                exc,
+            ),
         }
 
 
@@ -826,7 +830,7 @@ def _save_rationalized(doc_id: str, use_page_images: bool, schema_text: str) -> 
     try:
         json.loads(schema_text)
     except json.JSONDecodeError as e:
-        return None, f"LLM output is not valid JSON: {e}"
+        return None, sanitized_detail("LLM output is not valid JSON.", e)
 
     name = to_snake_case(pdf_svc.original_name(doc_id))
     if use_page_images:
@@ -838,7 +842,7 @@ def _save_rationalized(doc_id: str, use_page_images: bool, schema_text: str) -> 
         )
         return dataset, None
     except Exception as e:
-        return None, f"Could not ingest rationalized JSON: {e}"
+        return None, sanitized_detail("Could not ingest rationalized JSON.", e)
 
 
 @app.post("/pdf/rationalize/{doc_id}")
