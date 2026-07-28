@@ -1,3 +1,4 @@
+import logging
 import shutil
 from dataclasses import replace
 from pathlib import Path
@@ -7,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from app import gcs_service, main, pdf_service, session
 from app.main import app
+from app.query_engine import ExportWriteError
 
 client = TestClient(app)
 
@@ -287,7 +289,7 @@ def test_gcs_export_requires_bucket():
     assert resp.status_code == 400
 
 
-def test_gcs_export_upload_failure_maps_to_gcs_error(monkeypatch):
+def test_gcs_export_upload_failure_maps_to_gcs_error(monkeypatch, caplog):
     monkeypatch.setattr(gcs_service, "list_buckets", lambda project=None: ["alpha"])
 
     def fake_upload(local_path, bucket, name):
@@ -295,18 +297,53 @@ def test_gcs_export_upload_failure_maps_to_gcs_error(monkeypatch):
 
     monkeypatch.setattr(gcs_service, "upload_file", fake_upload)
 
-    resp = client.post(
-        "/gcs/export",
-        json={
-            "sql": "SELECT 1 AS id",
-            "format": "csv",
-            "bucket": "alpha",
-            "path": "out",
-            "project": "proj",
-        },
-    )
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post(
+            "/gcs/export",
+            json={
+                "sql": "SELECT 1 AS id",
+                "format": "csv",
+                "bucket": "alpha",
+                "path": "out",
+                "project": "proj",
+            },
+        )
     assert resp.status_code == 502
-    assert "network unreachable" in resp.json()["detail"]
+    detail = resp.json()["detail"]
+    assert "network unreachable" not in detail
+    assert detail == "GCS request failed. (RuntimeError)"
+    assert "network unreachable" in caplog.text
+
+
+def test_gcs_export_write_failure_does_not_leak_the_exception_text(monkeypatch, caplog):
+    """A write failure (as opposed to a bad-SQL failure) must not return the
+    server-side export path — export_parquet runs the user's SQL too, and a
+    SQL error there is passed through untouched, not curated."""
+    monkeypatch.setattr(gcs_service, "list_buckets", lambda project=None: ["alpha"])
+
+    sentinel = "/srv/secret-dir/exports/out.parquet"
+
+    def fail(sql, out_path):
+        raise ExportWriteError(f"Cannot open file {sentinel}")
+
+    monkeypatch.setattr(session.SESSION.engine, "export_parquet", fail)
+
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post(
+            "/gcs/export",
+            json={
+                "sql": "SELECT 1 AS id",
+                "format": "csv",
+                "bucket": "alpha",
+                "path": "out",
+                "project": "proj",
+            },
+        )
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert sentinel not in detail
+    assert detail == "Could not write the export file. (ExportWriteError)"
+    assert sentinel in caplog.text
 
 
 def test_gcs_objects_kind_pdf_uses_pdf_suffixes(monkeypatch):
@@ -374,7 +411,7 @@ def test_pdf_import_gcs_missing_credentials_is_400_with_hint(monkeypatch):
     assert "gcloud auth application-default login" in resp.json()["detail"]
 
 
-def test_pdf_import_gcs_save_failure_is_formatted_500(monkeypatch):
+def test_pdf_import_gcs_save_failure_is_formatted_500(monkeypatch, caplog):
     monkeypatch.setattr(gcs_service, "download_object_bytes", lambda bucket, name: b"%PDF-1.4 fake")
 
     def boom(filename, contents):
@@ -382,20 +419,28 @@ def test_pdf_import_gcs_save_failure_is_formatted_500(monkeypatch):
 
     monkeypatch.setattr(pdf_service, "save_upload", boom)
 
-    resp = client.post("/pdf/import-gcs", json={"bucket": "alpha", "object": "docs/a.pdf"})
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post("/pdf/import-gcs", json={"bucket": "alpha", "object": "docs/a.pdf"})
     assert resp.status_code == 500
-    assert resp.json()["detail"] == "disk full"
+    detail = resp.json()["detail"]
+    assert "disk full" not in detail
+    assert detail == "Could not save the PDF from Cloud Storage. (OSError)"
+    assert "disk full" in caplog.text
 
 
-def test_pdf_import_gcs_download_failure_maps_to_gcs_error(monkeypatch):
+def test_pdf_import_gcs_download_failure_maps_to_gcs_error(monkeypatch, caplog):
     def boom(bucket, name):
         raise RuntimeError("network unreachable")
 
     monkeypatch.setattr(gcs_service, "download_object_bytes", boom)
 
-    resp = client.post("/pdf/import-gcs", json={"bucket": "alpha", "object": "docs/a.pdf"})
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post("/pdf/import-gcs", json={"bucket": "alpha", "object": "docs/a.pdf"})
     assert resp.status_code == 502
-    assert "network unreachable" in resp.json()["detail"]
+    detail = resp.json()["detail"]
+    assert "network unreachable" not in detail
+    assert detail == "GCS request failed. (RuntimeError)"
+    assert "network unreachable" in caplog.text
 
 
 def test_gcs_import_xlsx_returns_preview_with_sheets(monkeypatch):

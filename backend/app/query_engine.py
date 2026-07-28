@@ -49,6 +49,15 @@ class CastResult:
     columns: list[ColumnInfo]
 
 
+class ExportWriteError(Exception):
+    """The export's write phase failed.
+
+    Raised only for failures of the COPY statement itself, whose text can
+    name the server-side output path. A failure in the user's own SQL is
+    left as the original duckdb error for the caller to pass through.
+    """
+
+
 def _quote_ident(name: str) -> str:
     if "." in name:
         return ".".join('"' + p.replace('"', '""') + '"' for p in name.split("."))
@@ -109,6 +118,9 @@ def _synchronized(method):
             return method(self, *args, **kwargs)
 
     return wrapper
+
+
+_EXPORT_VIEW = "_export_source"
 
 
 class QueryEngine:
@@ -361,9 +373,30 @@ class QueryEngine:
 
         Parquet is the canonical export format; other formats are produced
         from it by datagrunt writers at the service layer.
+
+        The user's SQL is bound in its own statement: DuckDB appends a
+        "LINE 1: <statement>" excerpt to bind errors, and the COPY statement
+        embeds the server-side output path, so binding the two together would
+        leak that path through any SQL error. The view is dropped again once
+        the export finishes (or fails) so it never lingers in the catalog:
+        list_tables() enumerates information_schema.tables, which includes
+        views, and a leftover view there breaks drop_all()'s DROP TABLE on
+        the next session reset.
+
+        The view body is parenthesized — AS ({sql}), not AS {sql} — to
+        preserve the single-statement guarantee the old COPY ({sql}) form
+        gave for free: an unparenthesized AS clause lets a trailing
+        `; DROP TABLE ...` execute as a second statement instead of failing
+        to parse.
         """
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        self._con.execute(f"COPY ({sql}) TO '{out_path.as_posix()}' (FORMAT PARQUET)")
+        self._con.execute(f"CREATE OR REPLACE TEMP VIEW {_EXPORT_VIEW} AS ({sql})")
+        try:
+            self._con.execute(f"COPY (SELECT * FROM {_EXPORT_VIEW}) TO '{out_path.as_posix()}' (FORMAT PARQUET)")
+        except duckdb.Error as exc:
+            raise ExportWriteError(str(exc)) from exc
+        finally:
+            self._con.execute(f"DROP VIEW IF EXISTS {_EXPORT_VIEW}")
         return out_path
 
     def table_select_sql(self, table: str) -> str:

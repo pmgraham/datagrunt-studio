@@ -35,8 +35,9 @@ from app.api_models import (
     StagedSheetPreview,
     StatementResultDTO,
 )
+from app.error_reporting import http_error, sanitized_detail
 from app.origin_guard import OriginGuardMiddleware
-from app.query_engine import QueryEngine
+from app.query_engine import ExportWriteError, QueryEngine
 from app.session import SESSION, SETTINGS
 from app.session_registry import Dataset, base_table_name, to_snake_case
 
@@ -144,7 +145,10 @@ def _staged_preview_entry(staged_id: str, filename: str, dest: Path) -> dict:
             "columns": None,
             "columns_normalized": None,
             "rows": None,
-            "error": f"Could not parse with default settings: {exc}",
+            "error": sanitized_detail(
+                "Could not parse with default settings. Try adjusting skip rows or picking a different header row.",
+                exc,
+            ),
         }
 
 
@@ -212,7 +216,12 @@ def confirm_import(req: ConfirmImportRequest) -> dict:
                     )
                 )
         except Exception as exc:
-            errors.append({"filename": item.filename, "message": str(exc)})
+            errors.append(
+                {
+                    "filename": item.filename,
+                    "message": sanitized_detail("Could not import the file with the selected options.", exc),
+                }
+            )
         finally:
             if dest.exists():
                 dest.unlink()
@@ -234,10 +243,11 @@ def preview_staged(staged_id: str, req: StagedPreviewRequest) -> dict:
             sheet=req.sheet,
         )
     except Exception as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Could not parse with skip_rows={req.skip_rows}: {exc}",
-        )
+        raise http_error(
+            400,
+            f"Could not parse with skip_rows={req.skip_rows}. Try a different skip-rows or header setting.",
+            exc,
+        ) from exc
 
 
 @app.post("/datasets")
@@ -269,7 +279,7 @@ async def upload_dataset(files: list[UploadFile] = File(...)) -> dict:
     errors: list[dict] = []
     for (name, _dest), result in zip(staged, parsed):
         if isinstance(result, Exception):
-            errors.append({"filename": name, "message": str(result)})
+            errors.append({"filename": name, "message": sanitized_detail("Could not parse the file.", result)})
             continue
         for source_type, parquet_path, sheet in result:
             created.append(SESSION.registry.add_from_parquet(name, source_type, parquet_path, sheet))
@@ -499,6 +509,21 @@ def _resolve_source(dataset_id: str | None, sql: str | None) -> tuple[str, str]:
     return sql.strip().rstrip(";"), "results"
 
 
+def _export_to_parquet(source_sql: str, parquet_out: Path) -> None:
+    """Run an export, curating write failures but not the user's SQL errors.
+
+    A SQL error is the user's own text and is their only feedback, so it
+    passes through. A write failure can name the server-side output path,
+    so it is curated.
+    """
+    try:
+        SESSION.engine.export_parquet(source_sql, parquet_out)
+    except ExportWriteError as exc:
+        raise http_error(400, "Could not write the export file.", exc) from exc
+    except duckdb.Error as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/export")
 def export_dataset(req: ExportRequest) -> FileResponse:
     if req.format not in ("csv", "parquet"):
@@ -507,10 +532,7 @@ def export_dataset(req: ExportRequest) -> FileResponse:
 
     exports_dir = SESSION.parquet_dir.parent / "exports"
     parquet_out = exports_dir / f"{basename}.parquet"
-    try:
-        SESSION.engine.export_parquet(source_sql, parquet_out)
-    except duckdb.Error as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _export_to_parquet(source_sql, parquet_out)
 
     if req.format == "parquet":
         return FileResponse(
@@ -531,7 +553,7 @@ def _gcs_http_error(exc: Exception) -> HTTPException:
     status = getattr(exc, "code", None)  # google.api_core exceptions carry .code
     if isinstance(status, int) and 400 <= status < 500:
         return HTTPException(status_code=status, detail=str(exc))
-    return HTTPException(status_code=502, detail=f"GCS error: {exc}")
+    return http_error(502, "GCS request failed.", exc)
 
 
 @app.get("/gcs/projects")
@@ -592,7 +614,12 @@ def gcs_import(req: GcsImportRequest) -> GcsImportResponse:
         except gcs.GcsCredentialsError as exc:
             raise _gcs_http_error(exc) from exc
         except Exception as exc:
-            errors.append({"filename": filename, "message": str(exc)})
+            errors.append(
+                {
+                    "filename": filename,
+                    "message": sanitized_detail("Could not download the object from Cloud Storage.", exc),
+                }
+            )
             continue
 
         try:
@@ -620,7 +647,12 @@ def gcs_import(req: GcsImportRequest) -> GcsImportResponse:
         except Exception as exc:
             if dest.exists():
                 dest.unlink()
-            errors.append({"filename": filename, "message": str(exc)})
+            errors.append(
+                {
+                    "filename": filename,
+                    "message": sanitized_detail("Could not import the object from Cloud Storage.", exc),
+                }
+            )
 
     return GcsImportResponse(previews=previews, datasets=created, errors=errors)
 
@@ -653,10 +685,7 @@ def gcs_export(req: GcsExportRequest) -> dict:
 
     exports_dir = SESSION.parquet_dir.parent / "exports"
     parquet_out = exports_dir / f"{basename}.parquet"
-    try:
-        SESSION.engine.export_parquet(source_sql, parquet_out)
-    except duckdb.Error as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _export_to_parquet(source_sql, parquet_out)
 
     if req.format == "csv":
         local_out = exports_dir / f"{basename}.csv"
@@ -707,7 +736,7 @@ def move_dataset_schema(dataset_id: str, req: SchemaRequest) -> DatasetDTO:
         updated = SESSION.registry.move_dataset_schema(dataset_id, req.schema_name)
         return _to_dto(updated)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise http_error(400, "Could not move the dataset to that schema.", exc) from exc
 
 
 # --- AI PDF EXTRACTOR & RATIONALIZER ENDPOINTS ---
@@ -734,7 +763,7 @@ async def pdf_upload(file: UploadFile = File(...)):
         doc_id = pdf_svc.save_upload(file.filename, contents)
         return {"doc_id": doc_id, "filename": file.filename}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise http_error(500, "Could not save the uploaded PDF.", e) from e
 
 
 @app.post("/pdf/import-gcs")
@@ -751,7 +780,7 @@ def pdf_import_gcs(req: PdfGcsImportRequest) -> dict:
     try:
         doc_id = pdf_svc.save_upload(filename, contents)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise http_error(500, "Could not save the PDF from Cloud Storage.", e) from e
     return {"doc_id": doc_id, "filename": filename}
 
 
@@ -790,7 +819,7 @@ def pdf_extract(doc_id: str, overwrite: bool = False):
 
         return {"json_text": json_text, "markdown_text": md_text, "images": imgs, "page_images": page_imgs}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Extraction failed: {str(e)}")
+        raise http_error(500, "Extraction failed.", e) from e
 
 
 @app.get("/pdf/image/{doc_id}/{filename}")
@@ -826,7 +855,7 @@ def _save_rationalized(doc_id: str, use_page_images: bool, schema_text: str) -> 
     try:
         json.loads(schema_text)
     except json.JSONDecodeError as e:
-        return None, f"LLM output is not valid JSON: {e}"
+        return None, sanitized_detail("LLM output is not valid JSON.", e)
 
     name = to_snake_case(pdf_svc.original_name(doc_id))
     if use_page_images:
@@ -838,7 +867,7 @@ def _save_rationalized(doc_id: str, use_page_images: bool, schema_text: str) -> 
         )
         return dataset, None
     except Exception as e:
-        return None, f"Could not ingest rationalized JSON: {e}"
+        return None, sanitized_detail("Could not ingest rationalized JSON.", e)
 
 
 @app.post("/pdf/rationalize/{doc_id}")
@@ -850,7 +879,7 @@ def pdf_rationalize(doc_id: str, req: RationalizeRequest):
     try:
         schema = pdf_svc.rationalize(doc_id, req.prompt, req.use_local, req.model, req.use_page_images)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Rationalization failed: {str(e)}")
+        raise http_error(500, "Rationalization failed.", e) from e
 
     dataset, save_error = _save_rationalized(doc_id, req.use_page_images, schema)
     return {
@@ -866,7 +895,7 @@ def get_ollama_models():
     try:
         return pdf_svc.get_ollama_models()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise http_error(500, "Could not list Ollama models.", e) from e
 
 
 @app.get("/pdf/gemini-models")
@@ -874,4 +903,4 @@ def get_gemini_models():
     try:
         return pdf_svc.get_gemini_models()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise http_error(500, "Could not list Gemini models.", e) from e

@@ -1,4 +1,5 @@
 import io
+import logging
 from pathlib import Path
 
 import pytest
@@ -230,10 +231,41 @@ def test_export_requires_exactly_one_source():
 
 
 def test_export_bad_sql_returns_400():
+    from app.session import SESSION
+
     client.post("/session/reset")
     resp = client.post("/export", json={"sql": "SELECT * FROM nope_missing", "format": "csv"})
     assert resp.status_code == 400
-    assert "nope_missing" in resp.json()["detail"]
+    detail = resp.json()["detail"]
+    assert "nope_missing" in detail
+    # Regression guard for the LINE 1 echo leaking the server export dir (Finding 1).
+    assert str(SESSION.parquet_dir.parent) not in detail
+
+
+def test_export_write_failure_does_not_leak_the_exception_text(monkeypatch, caplog):
+    """A write failure (as opposed to a bad-SQL failure) must not return the
+    server-side export path — unlike test_export_bad_sql_returns_400, whose
+    DuckDB error is about the user's own SQL and is passed through untouched."""
+    from app.query_engine import ExportWriteError
+    from app.session import SESSION
+
+    client.post("/session/reset")
+
+    sentinel = "/srv/secret-dir/exports/out.parquet"
+
+    def fail(sql, out_path):
+        raise ExportWriteError(f"Cannot open file {sentinel}")
+
+    monkeypatch.setattr(SESSION.engine, "export_parquet", fail)
+
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post("/export", json={"sql": "SELECT 1 AS x", "format": "csv"})
+
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert sentinel not in detail
+    assert detail == "Could not write the export file. (ExportWriteError)"
+    assert sentinel in caplog.text
 
 
 def test_export_bad_format_returns_400():
@@ -745,3 +777,84 @@ def test_confirm_import_defaults_still_work():
     )
     assert resp.status_code == 200
     assert resp.json()["errors"] == []
+
+
+def test_preview_error_does_not_leak_the_exception_text(monkeypatch, caplog):
+    """A parse failure must not return the path datagrunt failed on.
+
+    datagrunt and DuckDB quote the file in their errors, and staged uploads
+    live under the session's private data directory.
+    """
+    from app import datagrunt_service as svc_mod
+
+    sentinel = "/srv/secret-dir/staged/upload.csv"
+
+    def fail(_path):
+        raise ValueError(f"could not read {sentinel}: ragged preamble")
+
+    monkeypatch.setattr(svc_mod, "preview_file", fail)
+
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post(
+            "/datasets/preview",
+            files=[("files", ("up.csv", io.BytesIO(b"a,b\n1,2\n"), "text/csv"))],
+        )
+
+    assert resp.status_code == 200
+    error = resp.json()["files"][0]["error"]
+    assert error is not None
+    assert sentinel not in error
+    assert "ragged preamble" not in error
+    assert error.startswith("Could not parse with default settings.")
+    # The detail is not lost — it goes to the operator, not the client.
+    assert sentinel in caplog.text
+
+
+def test_schema_move_error_does_not_leak_the_exception_text(monkeypatch, caplog):
+    from app.session import SESSION
+
+    reset = client.post("/session/reset").json()
+    ds = reset["datasets"][0]
+
+    sentinel = "/srv/secret-dir/duckdb.db"
+
+    def fail(dataset_id, new_schema):
+        raise RuntimeError(f"could not write {sentinel}")
+
+    monkeypatch.setattr(SESSION.registry, "move_dataset_schema", fail)
+
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post(f"/datasets/{ds['id']}/schema", json={"schema_name": "cleaned"})
+
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert sentinel not in detail
+    assert detail == "Could not move the dataset to that schema. (RuntimeError)"
+    assert sentinel in caplog.text
+
+
+def test_upload_error_does_not_leak_the_exception_text(monkeypatch, caplog):
+    """The parallel-parse path binds the caught exception as `result`, not
+    `exc` — a variable name a naive grep for exception leaks would miss."""
+    from app import main as main_module
+
+    sentinel = "/srv/secret-dir/uploads/scratch.csv"
+
+    def fail(original_name, dest):
+        raise RuntimeError(f"could not parse {sentinel}")
+
+    monkeypatch.setattr(main_module, "_parse_file", fail)
+
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post(
+            "/datasets",
+            files=[("files", ("up.csv", io.BytesIO(b"a,b\n1,2\n"), "text/csv"))],
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["datasets"] == []
+    message = data["errors"][0]["message"]
+    assert sentinel not in message
+    assert message == "Could not parse the file. (RuntimeError)"
+    assert sentinel in caplog.text

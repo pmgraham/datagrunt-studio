@@ -5,6 +5,7 @@ The LLM call is monkeypatched — these tests cover the save path only.
 
 import io
 import json
+import logging
 
 from fastapi.testclient import TestClient
 
@@ -104,7 +105,7 @@ def test_invalid_json_returns_unsaved(monkeypatch):
     assert _rationalized_tables() == []
 
 
-def test_uningestable_json_returns_unsaved(monkeypatch):
+def test_uningestable_json_returns_unsaved(monkeypatch, caplog):
     client.post("/session/reset")
     doc_id = _upload()
     # `NaN` is accepted by Python's json.loads (a non-standard but long-standing
@@ -112,12 +113,17 @@ def test_uningestable_json_returns_unsaved(monkeypatch):
     # scalar array with its stricter, standards-compliant JSON parser and rejects
     # the NaN token as malformed JSON, so ingestion raises.
     _mock_rationalize(monkeypatch, "[1, NaN]")
-    resp = client.post(f"/pdf/rationalize/{doc_id}", json=BODY)
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post(f"/pdf/rationalize/{doc_id}", json=BODY)
     assert resp.status_code == 200
     data = resp.json()
     assert data["saved"] is False
     assert data["dataset"] is None
     assert "Could not ingest" in data["save_error"]
+    # The DuckDB error quotes the schema file's absolute path; it must not
+    # reach the client, but it must still reach the log.
+    assert str(pdf_svc.schema_path(doc_id)) not in data["save_error"]
+    assert str(pdf_svc.schema_path(doc_id)) in caplog.text
     assert _rationalized_tables() == []
 
 
@@ -137,3 +143,21 @@ def test_extract_saves_to_documents_schema(monkeypatch):
     doc_tables = [d["table"] for d in datasets if d["schema_name"] == "documents"]
     assert len(doc_tables) == 1
     assert doc_tables[0].endswith("documents.invoice_2024")
+
+
+def test_model_list_error_does_not_leak_the_exception_text(monkeypatch, caplog):
+    sentinel = "/srv/secret-dir/credentials.json"
+
+    def fail():
+        raise RuntimeError(f"could not load {sentinel}")
+
+    monkeypatch.setattr(pdf_svc, "get_gemini_models", fail)
+
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.get("/pdf/gemini-models")
+
+    assert resp.status_code == 500
+    detail = resp.json()["detail"]
+    assert sentinel not in detail
+    assert detail == "Could not list Gemini models. (RuntimeError)"
+    assert sentinel in caplog.text
