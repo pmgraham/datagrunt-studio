@@ -143,3 +143,21 @@ def test_extract_saves_to_documents_schema(monkeypatch):
     doc_tables = [d["table"] for d in datasets if d["schema_name"] == "documents"]
     assert len(doc_tables) == 1
     assert doc_tables[0].endswith("documents.invoice_2024")
+
+
+def test_model_list_error_does_not_leak_the_exception_text(monkeypatch, caplog):
+    sentinel = "/srv/secret-dir/credentials.json"
+
+    def fail():
+        raise RuntimeError(f"could not load {sentinel}")
+
+    monkeypatch.setattr(pdf_svc, "get_gemini_models", fail)
+
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.get("/pdf/gemini-models")
+
+    assert resp.status_code == 500
+    detail = resp.json()["detail"]
+    assert sentinel not in detail
+    assert detail == "Could not list Gemini models. (RuntimeError)"
+    assert sentinel in caplog.text

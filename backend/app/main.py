@@ -35,7 +35,7 @@ from app.api_models import (
     StagedSheetPreview,
     StatementResultDTO,
 )
-from app.error_reporting import sanitized_detail
+from app.error_reporting import http_error, sanitized_detail
 from app.origin_guard import OriginGuardMiddleware
 from app.query_engine import QueryEngine
 from app.session import SESSION, SETTINGS
@@ -238,10 +238,11 @@ def preview_staged(staged_id: str, req: StagedPreviewRequest) -> dict:
             sheet=req.sheet,
         )
     except Exception as exc:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Could not parse with skip_rows={req.skip_rows}: {exc}",
-        )
+        raise http_error(
+            400,
+            f"Could not parse with skip_rows={req.skip_rows}. Try a different skip-rows or header setting.",
+            exc,
+        ) from exc
 
 
 @app.post("/datasets")
@@ -535,7 +536,7 @@ def _gcs_http_error(exc: Exception) -> HTTPException:
     status = getattr(exc, "code", None)  # google.api_core exceptions carry .code
     if isinstance(status, int) and 400 <= status < 500:
         return HTTPException(status_code=status, detail=str(exc))
-    return HTTPException(status_code=502, detail=f"GCS error: {exc}")
+    return http_error(502, "GCS request failed.", exc)
 
 
 @app.get("/gcs/projects")
@@ -738,7 +739,7 @@ async def pdf_upload(file: UploadFile = File(...)):
         doc_id = pdf_svc.save_upload(file.filename, contents)
         return {"doc_id": doc_id, "filename": file.filename}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise http_error(500, "Could not save the uploaded PDF.", e) from e
 
 
 @app.post("/pdf/import-gcs")
@@ -755,7 +756,7 @@ def pdf_import_gcs(req: PdfGcsImportRequest) -> dict:
     try:
         doc_id = pdf_svc.save_upload(filename, contents)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise http_error(500, "Could not save the PDF from Cloud Storage.", e) from e
     return {"doc_id": doc_id, "filename": filename}
 
 
@@ -794,7 +795,7 @@ def pdf_extract(doc_id: str, overwrite: bool = False):
 
         return {"json_text": json_text, "markdown_text": md_text, "images": imgs, "page_images": page_imgs}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Extraction failed: {str(e)}")
+        raise http_error(500, "Extraction failed.", e) from e
 
 
 @app.get("/pdf/image/{doc_id}/{filename}")
@@ -854,7 +855,7 @@ def pdf_rationalize(doc_id: str, req: RationalizeRequest):
     try:
         schema = pdf_svc.rationalize(doc_id, req.prompt, req.use_local, req.model, req.use_page_images)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Rationalization failed: {str(e)}")
+        raise http_error(500, "Rationalization failed.", e) from e
 
     dataset, save_error = _save_rationalized(doc_id, req.use_page_images, schema)
     return {
@@ -870,7 +871,7 @@ def get_ollama_models():
     try:
         return pdf_svc.get_ollama_models()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise http_error(500, "Could not list Ollama models.", e) from e
 
 
 @app.get("/pdf/gemini-models")
@@ -878,4 +879,4 @@ def get_gemini_models():
     try:
         return pdf_svc.get_gemini_models()
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise http_error(500, "Could not list Gemini models.", e) from e
