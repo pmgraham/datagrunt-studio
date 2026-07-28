@@ -230,11 +230,15 @@ def test_export_requires_exactly_one_source():
     assert both.status_code == 400
 
 
-def test_export_bad_sql_returns_400():
+def test_export_bad_sql_returns_400(caplog):
     client.post("/session/reset")
-    resp = client.post("/export", json={"sql": "SELECT * FROM nope_missing", "format": "csv"})
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post("/export", json={"sql": "SELECT * FROM nope_missing", "format": "csv"})
     assert resp.status_code == 400
-    assert "nope_missing" in resp.json()["detail"]
+    detail = resp.json()["detail"]
+    assert "nope_missing" not in detail
+    assert detail == "Could not write the export file. (CatalogException)"
+    assert "nope_missing" in caplog.text
 
 
 def test_export_bad_format_returns_400():
@@ -776,4 +780,27 @@ def test_preview_error_does_not_leak_the_exception_text(monkeypatch, caplog):
     assert "ragged preamble" not in error
     assert error.startswith("Could not parse with default settings.")
     # The detail is not lost — it goes to the operator, not the client.
+    assert sentinel in caplog.text
+
+
+def test_schema_move_error_does_not_leak_the_exception_text(monkeypatch, caplog):
+    from app.session import SESSION
+
+    reset = client.post("/session/reset").json()
+    ds = reset["datasets"][0]
+
+    sentinel = "/srv/secret-dir/duckdb.db"
+
+    def fail(dataset_id, new_schema):
+        raise RuntimeError(f"could not write {sentinel}")
+
+    monkeypatch.setattr(SESSION.registry, "move_dataset_schema", fail)
+
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post(f"/datasets/{ds['id']}/schema", json={"schema_name": "cleaned"})
+
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert sentinel not in detail
+    assert detail == "Could not move the dataset to that schema. (RuntimeError)"
     assert sentinel in caplog.text

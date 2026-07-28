@@ -515,7 +515,7 @@ def export_dataset(req: ExportRequest) -> FileResponse:
     try:
         SESSION.engine.export_parquet(source_sql, parquet_out)
     except duckdb.Error as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise http_error(400, "Could not write the export file.", exc) from exc
 
     if req.format == "parquet":
         return FileResponse(
@@ -661,7 +661,7 @@ def gcs_export(req: GcsExportRequest) -> dict:
     try:
         SESSION.engine.export_parquet(source_sql, parquet_out)
     except duckdb.Error as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise http_error(400, "Could not write the export file.", exc) from exc
 
     if req.format == "csv":
         local_out = exports_dir / f"{basename}.csv"
@@ -712,7 +712,7 @@ def move_dataset_schema(dataset_id: str, req: SchemaRequest) -> DatasetDTO:
         updated = SESSION.registry.move_dataset_schema(dataset_id, req.schema_name)
         return _to_dto(updated)
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        raise http_error(400, "Could not move the dataset to that schema.", exc) from exc
 
 
 # --- AI PDF EXTRACTOR & RATIONALIZER ENDPOINTS ---
