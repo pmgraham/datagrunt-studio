@@ -337,9 +337,10 @@ def test_export_parquet_separates_bind_errors_from_write_errors(tmp_path):
     """Finding 1 regression guard, at the engine level.
 
     export_parquet binds the user's SQL in its own statement before the COPY,
-    so a bind error's LINE 1 echo carries only the user's own text — never
-    the server-side output path that the COPY statement embeds. Only a
-    failure of the COPY statement itself becomes ExportWriteError.
+    so a bind error is raised while binding the CREATE ... VIEW statement —
+    its LINE 1 echo can only ever quote that statement, never the COPY
+    statement that embeds the server-side output path. Only a failure of the
+    COPY statement itself becomes ExportWriteError.
     """
     db_dir = tmp_path / "session"
     db_dir.mkdir()
@@ -348,7 +349,11 @@ def test_export_parquet_separates_bind_errors_from_write_errors(tmp_path):
     bad_sql_out = db_dir / "r.parquet"
     with pytest.raises(duckdb.Error) as exc_info:
         eng.export_parquet("SELECT bad_column_missing", bad_sql_out)
-    assert str(bad_sql_out) not in str(exc_info.value)
+    # DuckDB's LINE 1 echo is truncated to ~80 chars, so asserting the output
+    # path's text is absent doesn't discriminate — a long enough path is cut
+    # off before it would appear either way. Assert on which statement was
+    # echoed instead: a bind error must quote CREATE ... VIEW, never COPY.
+    assert "COPY" not in str(exc_info.value)
 
     # The engine's filesystem sandbox confines writes to db_dir, so a sibling
     # directory triggers a genuine DuckDB write failure at the COPY statement
@@ -358,6 +363,21 @@ def test_export_parquet_separates_bind_errors_from_write_errors(tmp_path):
     with pytest.raises(ExportWriteError):
         eng.export_parquet("SELECT 1 AS n", outside_dir / "r.parquet")
 
+    eng.close()
+
+
+def test_export_parquet_rejects_trailing_statements(tmp_path):
+    """The CREATE ... VIEW body is parenthesized — AS ({sql}) — to preserve
+    the single-statement guarantee the old COPY ({sql}) form gave for free:
+    a trailing `; DROP TABLE ...` must fail to parse, not execute as a
+    second statement against the shared connection."""
+    eng = QueryEngine(tmp_path / "s.duckdb")
+    eng.materialize("victim", "SELECT 1 AS id")
+
+    with pytest.raises(duckdb.Error):
+        eng.export_parquet("SELECT 1 AS n; DROP TABLE victim", tmp_path / "r.parquet")
+
+    assert "victim" in eng.list_tables()
     eng.close()
 
 

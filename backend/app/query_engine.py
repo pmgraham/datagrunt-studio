@@ -382,9 +382,15 @@ class QueryEngine:
         list_tables() enumerates information_schema.tables, which includes
         views, and a leftover view there breaks drop_all()'s DROP TABLE on
         the next session reset.
+
+        The view body is parenthesized — AS ({sql}), not AS {sql} — to
+        preserve the single-statement guarantee the old COPY ({sql}) form
+        gave for free: an unparenthesized AS clause lets a trailing
+        `; DROP TABLE ...` execute as a second statement instead of failing
+        to parse.
         """
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        self._con.execute(f"CREATE OR REPLACE TEMP VIEW {_EXPORT_VIEW} AS {sql}")
+        self._con.execute(f"CREATE OR REPLACE TEMP VIEW {_EXPORT_VIEW} AS ({sql})")
         try:
             self._con.execute(f"COPY (SELECT * FROM {_EXPORT_VIEW}) TO '{out_path.as_posix()}' (FORMAT PARQUET)")
         except duckdb.Error as exc:
