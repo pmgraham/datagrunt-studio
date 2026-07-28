@@ -804,3 +804,30 @@ def test_schema_move_error_does_not_leak_the_exception_text(monkeypatch, caplog)
     assert sentinel not in detail
     assert detail == "Could not move the dataset to that schema. (RuntimeError)"
     assert sentinel in caplog.text
+
+
+def test_upload_error_does_not_leak_the_exception_text(monkeypatch, caplog):
+    """The parallel-parse path binds the caught exception as `result`, not
+    `exc` — a variable name a naive grep for exception leaks would miss."""
+    from app import main as main_module
+
+    sentinel = "/srv/secret-dir/uploads/scratch.csv"
+
+    def fail(original_name, dest):
+        raise RuntimeError(f"could not parse {sentinel}")
+
+    monkeypatch.setattr(main_module, "_parse_file", fail)
+
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post(
+            "/datasets",
+            files=[("files", ("up.csv", io.BytesIO(b"a,b\n1,2\n"), "text/csv"))],
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["datasets"] == []
+    message = data["errors"][0]["message"]
+    assert sentinel not in message
+    assert message == "Could not parse the file. (RuntimeError)"
+    assert sentinel in caplog.text

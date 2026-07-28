@@ -216,7 +216,12 @@ def confirm_import(req: ConfirmImportRequest) -> dict:
                     )
                 )
         except Exception as exc:
-            errors.append({"filename": item.filename, "message": str(exc)})
+            errors.append(
+                {
+                    "filename": item.filename,
+                    "message": sanitized_detail("Could not import the file with the selected options.", exc),
+                }
+            )
         finally:
             if dest.exists():
                 dest.unlink()
@@ -274,7 +279,7 @@ async def upload_dataset(files: list[UploadFile] = File(...)) -> dict:
     errors: list[dict] = []
     for (name, _dest), result in zip(staged, parsed):
         if isinstance(result, Exception):
-            errors.append({"filename": name, "message": str(result)})
+            errors.append({"filename": name, "message": sanitized_detail("Could not parse the file.", result)})
             continue
         for source_type, parquet_path, sheet in result:
             created.append(SESSION.registry.add_from_parquet(name, source_type, parquet_path, sheet))
@@ -597,7 +602,12 @@ def gcs_import(req: GcsImportRequest) -> GcsImportResponse:
         except gcs.GcsCredentialsError as exc:
             raise _gcs_http_error(exc) from exc
         except Exception as exc:
-            errors.append({"filename": filename, "message": str(exc)})
+            errors.append(
+                {
+                    "filename": filename,
+                    "message": sanitized_detail("Could not download the object from Cloud Storage.", exc),
+                }
+            )
             continue
 
         try:
@@ -625,7 +635,12 @@ def gcs_import(req: GcsImportRequest) -> GcsImportResponse:
         except Exception as exc:
             if dest.exists():
                 dest.unlink()
-            errors.append({"filename": filename, "message": str(exc)})
+            errors.append(
+                {
+                    "filename": filename,
+                    "message": sanitized_detail("Could not import the object from Cloud Storage.", exc),
+                }
+            )
 
     return GcsImportResponse(previews=previews, datasets=created, errors=errors)
 
