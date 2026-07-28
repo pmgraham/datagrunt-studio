@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from app import gcs_service, main, pdf_service, session
 from app.main import app
+from app.query_engine import ExportWriteError
 
 client = TestClient(app)
 
@@ -323,7 +324,7 @@ def test_gcs_export_write_failure_does_not_leak_the_exception_text(monkeypatch, 
     sentinel = "/srv/secret-dir/exports/out.parquet"
 
     def fail(sql, out_path):
-        raise duckdb.IOException(f"Cannot open file {sentinel}")
+        raise ExportWriteError(f"Cannot open file {sentinel}")
 
     monkeypatch.setattr(session.SESSION.engine, "export_parquet", fail)
 
@@ -341,7 +342,7 @@ def test_gcs_export_write_failure_does_not_leak_the_exception_text(monkeypatch, 
     assert resp.status_code == 400
     detail = resp.json()["detail"]
     assert sentinel not in detail
-    assert detail == "Could not write the export file. (IOException)"
+    assert detail == "Could not write the export file. (ExportWriteError)"
     assert sentinel in caplog.text
 
 

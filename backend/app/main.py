@@ -37,7 +37,7 @@ from app.api_models import (
 )
 from app.error_reporting import http_error, sanitized_detail
 from app.origin_guard import OriginGuardMiddleware
-from app.query_engine import QueryEngine
+from app.query_engine import ExportWriteError, QueryEngine
 from app.session import SESSION, SETTINGS
 from app.session_registry import Dataset, base_table_name, to_snake_case
 
@@ -509,6 +509,21 @@ def _resolve_source(dataset_id: str | None, sql: str | None) -> tuple[str, str]:
     return sql.strip().rstrip(";"), "results"
 
 
+def _export_to_parquet(source_sql: str, parquet_out: Path) -> None:
+    """Run an export, curating write failures but not the user's SQL errors.
+
+    A SQL error is the user's own text and is their only feedback, so it
+    passes through. A write failure can name the server-side output path,
+    so it is curated.
+    """
+    try:
+        SESSION.engine.export_parquet(source_sql, parquet_out)
+    except ExportWriteError as exc:
+        raise http_error(400, "Could not write the export file.", exc) from exc
+    except duckdb.Error as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.post("/export")
 def export_dataset(req: ExportRequest) -> FileResponse:
     if req.format not in ("csv", "parquet"):
@@ -517,15 +532,7 @@ def export_dataset(req: ExportRequest) -> FileResponse:
 
     exports_dir = SESSION.parquet_dir.parent / "exports"
     parquet_out = exports_dir / f"{basename}.parquet"
-    try:
-        SESSION.engine.export_parquet(source_sql, parquet_out)
-    # export_parquet runs the user's SQL as well as writing the file: a write
-    # failure can name the server-side path, but a SQL error is the user's own
-    # and is the only feedback they get.
-    except (duckdb.IOException, duckdb.PermissionException) as exc:
-        raise http_error(400, "Could not write the export file.", exc) from exc
-    except duckdb.Error as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _export_to_parquet(source_sql, parquet_out)
 
     if req.format == "parquet":
         return FileResponse(
@@ -678,15 +685,7 @@ def gcs_export(req: GcsExportRequest) -> dict:
 
     exports_dir = SESSION.parquet_dir.parent / "exports"
     parquet_out = exports_dir / f"{basename}.parquet"
-    try:
-        SESSION.engine.export_parquet(source_sql, parquet_out)
-    # export_parquet runs the user's SQL as well as writing the file: a write
-    # failure can name the server-side path, but a SQL error is the user's own
-    # and is the only feedback they get.
-    except (duckdb.IOException, duckdb.PermissionException) as exc:
-        raise http_error(400, "Could not write the export file.", exc) from exc
-    except duckdb.Error as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _export_to_parquet(source_sql, parquet_out)
 
     if req.format == "csv":
         local_out = exports_dir / f"{basename}.csv"

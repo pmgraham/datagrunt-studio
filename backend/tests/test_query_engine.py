@@ -5,7 +5,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from app.query_engine import CastResult, ColumnInfo, QueryEngine, QueryResult
+from app.query_engine import CastResult, ColumnInfo, ExportWriteError, QueryEngine, QueryResult
 
 
 def _make_parquet(path: Path, rows: list[tuple], columns: list[str]) -> Path:
@@ -330,6 +330,34 @@ def test_export_parquet_reflects_cast_state(tmp_path):
     con = duckdb.connect()
     (price_type,) = con.execute(f"SELECT typeof(price) FROM read_parquet('{out.as_posix()}') LIMIT 1").fetchone()
     assert price_type == "DOUBLE"  # export reads live DuckDB state, not the original file
+    eng.close()
+
+
+def test_export_parquet_separates_bind_errors_from_write_errors(tmp_path):
+    """Finding 1 regression guard, at the engine level.
+
+    export_parquet binds the user's SQL in its own statement before the COPY,
+    so a bind error's LINE 1 echo carries only the user's own text — never
+    the server-side output path that the COPY statement embeds. Only a
+    failure of the COPY statement itself becomes ExportWriteError.
+    """
+    db_dir = tmp_path / "session"
+    db_dir.mkdir()
+    eng = QueryEngine(db_dir / "s.duckdb")
+
+    bad_sql_out = db_dir / "r.parquet"
+    with pytest.raises(duckdb.Error) as exc_info:
+        eng.export_parquet("SELECT bad_column_missing", bad_sql_out)
+    assert str(bad_sql_out) not in str(exc_info.value)
+
+    # The engine's filesystem sandbox confines writes to db_dir, so a sibling
+    # directory triggers a genuine DuckDB write failure at the COPY statement
+    # — the SQL itself ("SELECT 1 AS n") is valid and binds cleanly.
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    with pytest.raises(ExportWriteError):
+        eng.export_parquet("SELECT 1 AS n", outside_dir / "r.parquet")
+
     eng.close()
 
 

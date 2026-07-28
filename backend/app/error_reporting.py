@@ -30,5 +30,8 @@ def sanitized_detail(message: str, exc: BaseException) -> str:
 
 
 def http_error(status_code: int, message: str, exc: BaseException) -> HTTPException:
-    """Build an HTTPException whose detail is safe to return to the client."""
+    """Build an HTTPException whose detail is safe to return to the client.
+
+    Returns rather than raises, mirroring `_gcs_http_error`: the caller must `raise` it.
+    """
     return HTTPException(status_code=status_code, detail=sanitized_detail(message, exc))

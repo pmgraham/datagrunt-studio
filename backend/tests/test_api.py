@@ -2,7 +2,6 @@ import io
 import logging
 from pathlib import Path
 
-import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
@@ -232,16 +231,22 @@ def test_export_requires_exactly_one_source():
 
 
 def test_export_bad_sql_returns_400():
+    from app.session import SESSION
+
     client.post("/session/reset")
     resp = client.post("/export", json={"sql": "SELECT * FROM nope_missing", "format": "csv"})
     assert resp.status_code == 400
-    assert "nope_missing" in resp.json()["detail"]
+    detail = resp.json()["detail"]
+    assert "nope_missing" in detail
+    # Regression guard for the LINE 1 echo leaking the server export dir (Finding 1).
+    assert str(SESSION.parquet_dir.parent) not in detail
 
 
 def test_export_write_failure_does_not_leak_the_exception_text(monkeypatch, caplog):
     """A write failure (as opposed to a bad-SQL failure) must not return the
     server-side export path — unlike test_export_bad_sql_returns_400, whose
     DuckDB error is about the user's own SQL and is passed through untouched."""
+    from app.query_engine import ExportWriteError
     from app.session import SESSION
 
     client.post("/session/reset")
@@ -249,7 +254,7 @@ def test_export_write_failure_does_not_leak_the_exception_text(monkeypatch, capl
     sentinel = "/srv/secret-dir/exports/out.parquet"
 
     def fail(sql, out_path):
-        raise duckdb.IOException(f"Cannot open file {sentinel}")
+        raise ExportWriteError(f"Cannot open file {sentinel}")
 
     monkeypatch.setattr(SESSION.engine, "export_parquet", fail)
 
@@ -259,7 +264,7 @@ def test_export_write_failure_does_not_leak_the_exception_text(monkeypatch, capl
     assert resp.status_code == 400
     detail = resp.json()["detail"]
     assert sentinel not in detail
-    assert detail == "Could not write the export file. (IOException)"
+    assert detail == "Could not write the export file. (ExportWriteError)"
     assert sentinel in caplog.text
 
 
