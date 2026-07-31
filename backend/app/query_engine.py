@@ -120,7 +120,7 @@ def _synchronized(method):
     return wrapper
 
 
-_EXPORT_VIEW = "_export_source"
+_EXPORT_VIEW = "_studio_export_source_temp_v1"
 
 
 class QueryEngine:
@@ -352,22 +352,6 @@ class QueryEngine:
         return self.run_sql(f"SELECT * FROM {_quote_ident(table)}", limit=limit)
 
     @_synchronized
-    def export(self, sql_or_table: str, fmt: str, out_path: Path) -> Path:
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        source = (
-            sql_or_table
-            if sql_or_table.strip().lower().startswith("select")
-            else f"SELECT * FROM {_quote_ident(sql_or_table)}"
-        )
-        fmt_clause = {
-            "csv": "(FORMAT CSV, HEADER)",
-            "parquet": "(FORMAT PARQUET)",
-            "json": "(FORMAT JSON)",
-        }[fmt]
-        self._con.execute(f"COPY ({source}) TO '{out_path.as_posix()}' {fmt_clause}")
-        return out_path
-
-    @_synchronized
     def export_parquet(self, sql: str, out_path: Path) -> Path:
         """Export a statement's full result set to a parquet file.
 
@@ -409,6 +393,7 @@ class QueryEngine:
             "SELECT table_schema, table_name "
             "FROM information_schema.tables "
             "WHERE table_schema NOT IN ('information_schema', 'pg_catalog')"
+            " AND table_type = 'BASE TABLE'"
         ).fetchall()
         tables = []
         for schema, name in rows:
