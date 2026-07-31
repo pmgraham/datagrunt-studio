@@ -335,7 +335,7 @@ wheels = [
 
 [[package]]
 name = "datagrunt"
-version = "4.5.4"
+version = "4.5.10"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "duckdb" },
@@ -344,12 +344,12 @@ dependencies = [
     { name = "pyarrow" },
     { name = "xlsxwriter" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d5/3e/4a161c7168125cfdc1f9963cd4e924432c6e1a97282ca7f3a3a9a32a6e60/datagrunt-4.5.4.tar.gz", hash = "sha256:4a6053bb980fad904e2d13eb51315f2aa8562c9920f5765f2ac04aa115a422b7", size = 123814, upload-time = "2026-07-18T15:04:52.629Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/39/d1/cfe25585fe576425189e0036f88df2b032da19dd3a34510c1211940534ea/datagrunt-4.5.10.tar.gz", hash = "sha256:a92a451cffc38dfe6124cd2cda49b376c3a76c54fafb50f39d87fb23bf96710e", size = 128943, upload-time = "2026-07-31T14:40:47.742Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ee/59/46ef624931f4b6f6d7d08cb532f72ceeffc2a825e907796228cc9ce0574f/datagrunt-4.5.4-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:68618096a414685904d787c880f2160b225fb95d3c32c0350029badb1bbf42dc", size = 1015720, upload-time = "2026-07-18T15:04:46.863Z" },
-    { url = "https://files.pythonhosted.org/packages/9d/8a/8e6b0c69f98198460126ccd11f787764cef5e7a4cd94ae460c11a6eb028b/datagrunt-4.5.4-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:929ffff8cb626ab7474f5da2d039bdc6429fdc0a791a4be05eaad5ab6de610e4", size = 1080034, upload-time = "2026-07-18T15:04:48.337Z" },
-    { url = "https://files.pythonhosted.org/packages/7c/5d/dcf5082f8cacc5912d8a6d862fec082219d23d1b3942e441b76209ca236b/datagrunt-4.5.4-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:8f6ac936a6edad8f8e6148d243d926346bf70c4df1ea08f534ea6f647cb1fc53", size = 1113732, upload-time = "2026-07-18T15:04:49.824Z" },
-    { url = "https://files.pythonhosted.org/packages/16/02/a3ef1955ac74d80739f726b8a0decb1885c5028bed652c225fb1a21899bb/datagrunt-4.5.4-cp310-abi3-win_amd64.whl", hash = "sha256:de9099232ba7bc640df624be71406e96d5a7dfb2fe1b5c79cd94791ed8913f41", size = 985301, upload-time = "2026-07-18T15:04:51.372Z" },
+    { url = "https://files.pythonhosted.org/packages/27/13/d12766e8cdff82b12c8b503af9f9f39c3f372b048c23ee367e42ae80207f/datagrunt-4.5.10-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:fecbee96a038f64cbfc9ccb3a82b7361734e03fa0b336d291eadf2058bd87262", size = 1089069, upload-time = "2026-07-31T14:40:40.571Z" },
+    { url = "https://files.pythonhosted.org/packages/6c/e5/bb979698ed09d18f61317697ef4b19e49f3d5ed40e5f923a5051e6138b87/datagrunt-4.5.10-cp310-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:0ba1e1b0bb8b35637c3960effc8829bd2ef9b9c36fd369cf3a3e70ae60bddfd6", size = 1155938, upload-time = "2026-07-31T14:40:42.714Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/db/a0ba8959e6e2c3fe8fa5523cea5a1e8ac4073c160cae69e53edb0eefde1a/datagrunt-4.5.10-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:5eca1012db09878375667c94d3854d3ea14c9d7d5391f6af0d1ecbfeaef7993c", size = 1191516, upload-time = "2026-07-31T14:40:44.339Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/35/5b26b253a601cfe7c5bd395ba866d9b546dde7a6fe57356c5fc354fafdcd/datagrunt-4.5.10-cp310-abi3-win_amd64.whl", hash = "sha256:918348ab4b647287f1049ec5a6db69410cdab3b94d9b5af5238cf80793e5c94e", size = 1060968, upload-time = "2026-07-31T14:40:45.885Z" },
 ]
 
 [package.optional-dependencies]
@@ -386,7 +386,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "datagrunt", extras = ["pdf"], specifier = ">=4.5.4" },
+    { name = "datagrunt", extras = ["pdf"], specifier = ">=4.5.10" },
     { name = "duckdb", specifier = ">=1.0" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "google-cloud-resource-manager", specifier = ">=1.18.0" },
