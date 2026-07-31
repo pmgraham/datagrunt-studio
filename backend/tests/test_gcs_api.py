@@ -768,4 +768,3 @@ def test_gcs_export_upload_error_does_not_leak_the_exception_text(monkeypatch, c
     assert sentinel not in detail
     assert detail == "GCS request failed. (ValueError)"
     assert sentinel in caplog.text
-

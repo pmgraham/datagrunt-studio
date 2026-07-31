@@ -246,4 +246,3 @@ def test_get_ollama_models_error_does_not_leak_the_exception_text(monkeypatch, c
     assert sentinel not in detail
     assert detail == "Could not list Ollama models. (ValueError)"
     assert sentinel in caplog.text
-

@@ -919,4 +919,3 @@ def test_preview_staged_error_does_not_leak_the_exception_text(monkeypatch, capl
     assert sentinel not in detail
     assert detail == "Could not parse with skip_rows=0. Try a different skip-rows or header setting. (ValueError)"
     assert sentinel in caplog.text
-

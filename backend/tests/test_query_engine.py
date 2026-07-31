@@ -523,5 +523,3 @@ def test_list_tables_ignores_views(tmp_path):
     eng.drop_all()
     assert eng.list_tables() == []
     eng.close()
-
-
