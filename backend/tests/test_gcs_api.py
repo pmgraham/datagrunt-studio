@@ -689,3 +689,83 @@ def test_gcs_export_allows_a_project_in_the_allowlist(monkeypatch):
     )
     assert resp.status_code == 200
     assert resp.json()["uri"] == "gs://alpha/out.csv"
+
+
+def test_gcs_import_download_error_does_not_leak_the_exception_text(monkeypatch, caplog):
+    client.post("/session/reset")
+
+    sentinel = "/secret/server/path/file.csv"
+
+    def fail(bucket, name, dest):
+        raise ValueError(f"failed download for {sentinel}")
+
+    monkeypatch.setattr(gcs_service, "download_object", fail)
+
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post("/gcs/import", json={"bucket": "alpha", "objects": ["raw/sales.csv"]})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert sentinel not in resp.text
+    assert len(data["errors"]) == 1
+    assert data["errors"][0]["filename"] == "sales.csv"
+    assert data["errors"][0]["message"] == "Could not download the object from Cloud Storage. (ValueError)"
+    assert sentinel in caplog.text
+
+
+def test_gcs_import_ingest_error_does_not_leak_the_exception_text(monkeypatch, caplog):
+    client.post("/session/reset")
+
+    sentinel = "/secret/server/path/file.csv"
+
+    def fake_download(bucket, name, dest):
+        dest.write_bytes(b"dummy parquet bytes")
+        return dest
+
+    monkeypatch.setattr(gcs_service, "download_object", fake_download)
+
+    def fail(*args, **kwargs):
+        raise ValueError(f"failed ingest for {sentinel}")
+
+    monkeypatch.setattr(session.SESSION.registry, "add_from_parquet", fail)
+
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post("/gcs/import", json={"bucket": "alpha", "objects": ["curated/metrics.parquet"]})
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert sentinel not in resp.text
+    assert len(data["errors"]) == 1
+    assert data["errors"][0]["filename"] == "metrics.parquet"
+    assert data["errors"][0]["message"] == "Could not import the object from Cloud Storage. (ValueError)"
+    assert sentinel in caplog.text
+
+
+def test_gcs_export_upload_error_does_not_leak_the_exception_text(monkeypatch, caplog):
+    monkeypatch.setattr(gcs_service, "list_buckets", lambda project=None: ["alpha"])
+
+    sentinel = "/secret/server/path/file.csv"
+
+    def fail(local_path, bucket, name):
+        raise ValueError(f"failed upload for {sentinel}")
+
+    monkeypatch.setattr(gcs_service, "upload_file", fail)
+
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post(
+            "/gcs/export",
+            json={
+                "sql": "SELECT 1 AS id",
+                "format": "csv",
+                "bucket": "alpha",
+                "path": "out",
+                "project": "proj",
+            },
+        )
+    assert resp.status_code == 502
+    detail = resp.json()["detail"]
+    assert sentinel not in resp.text
+    assert sentinel not in detail
+    assert detail == "GCS request failed. (ValueError)"
+    assert sentinel in caplog.text
+

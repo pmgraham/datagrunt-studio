@@ -858,3 +858,65 @@ def test_upload_error_does_not_leak_the_exception_text(monkeypatch, caplog):
     assert sentinel not in message
     assert message == "Could not parse the file. (RuntimeError)"
     assert sentinel in caplog.text
+
+
+def test_confirm_import_error_does_not_leak_the_exception_text(monkeypatch, caplog):
+    from app import main as main_mod
+
+    client.post("/session/reset")
+    staged_id = _stage_fixture("semicolon.csv")
+
+    sentinel = "/secret/server/path/file.csv"
+
+    def fail(*args, **kwargs):
+        raise ValueError(f"failed to parse {sentinel}")
+
+    monkeypatch.setattr(main_mod.svc, "parse_csv", fail)
+
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post(
+            "/datasets/confirm",
+            json={
+                "files": [
+                    {
+                        "staged_id": staged_id,
+                        "filename": "semicolon.csv",
+                    }
+                ]
+            },
+        )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert sentinel not in resp.text
+    assert len(data["errors"]) == 1
+    assert data["errors"][0]["message"] == "Could not import the file with the selected options. (ValueError)"
+    assert sentinel in caplog.text
+
+
+def test_preview_staged_error_does_not_leak_the_exception_text(monkeypatch, caplog):
+    from app import main as main_mod
+
+    client.post("/session/reset")
+    staged_id = _stage_fixture("semicolon.csv")
+
+    sentinel = "/secret/server/path/file.csv"
+
+    def fail(*args, **kwargs):
+        raise ValueError(f"failed to preview {sentinel}")
+
+    monkeypatch.setattr(main_mod.svc, "preview_with_options", fail)
+
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post(
+            f"/datasets/staged/{staged_id}/preview",
+            json={"skip_rows": 0, "has_header": True},
+        )
+
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert sentinel not in resp.text
+    assert sentinel not in detail
+    assert detail == "Could not parse with skip_rows=0. Try a different skip-rows or header setting. (ValueError)"
+    assert sentinel in caplog.text
+
