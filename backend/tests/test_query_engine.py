@@ -69,7 +69,7 @@ def test_export_parquet_roundtrip(tmp_path):
     pq = _make_parquet(tmp_path / "d.parquet", [(1, "x")], ["id INTEGER", "name VARCHAR"])
     eng = QueryEngine(tmp_path / "session.duckdb")
     eng.ingest_parquet("t", pq)
-    out = eng.export("t", "parquet", tmp_path / "export.parquet")
+    out = eng.export_parquet("SELECT * FROM t", tmp_path / "export.parquet")
     assert out.exists()
     eng.close()
 
@@ -503,4 +503,23 @@ def test_page_sort_unknown_column_raises(tmp_path):
     eng = QueryEngine(tmp_path / "s.duckdb")
     with pytest.raises(duckdb.Error, match="Unknown sort column"):
         eng.page("SELECT 1 AS a", offset=0, limit=25, sort_column="nope")
+    eng.close()
+
+
+def test_export_parquet_with_colliding_user_table(tmp_path):
+    eng = QueryEngine(tmp_path / "s.duckdb")
+    eng.materialize("_export_source", "SELECT 1 AS id")
+    out = tmp_path / "out.parquet"
+    eng.export_parquet("SELECT * FROM _export_source", out)
+    assert out.exists()
+    eng.close()
+
+
+def test_list_tables_ignores_views(tmp_path):
+    eng = QueryEngine(tmp_path / "s.duckdb")
+    eng.materialize("t1", "SELECT 1 AS a")
+    eng._con.execute("CREATE VIEW v1 AS SELECT * FROM t1")
+    assert eng.list_tables() == ["t1"]
+    eng.drop_all()
+    assert eng.list_tables() == []
     eng.close()

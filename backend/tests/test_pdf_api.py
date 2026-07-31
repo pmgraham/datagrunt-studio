@@ -161,3 +161,88 @@ def test_model_list_error_does_not_leak_the_exception_text(monkeypatch, caplog):
     assert sentinel not in detail
     assert detail == "Could not list Gemini models. (RuntimeError)"
     assert sentinel in caplog.text
+
+
+def test_pdf_upload_error_does_not_leak_the_exception_text(monkeypatch, caplog):
+    sentinel = "/secret/server/path/file.csv"
+
+    def fail(filename, contents):
+        raise ValueError(f"failed save_upload for {sentinel}")
+
+    monkeypatch.setattr(pdf_svc, "save_upload", fail)
+
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post(
+            "/pdf/upload",
+            files=[("file", ("Invoice.pdf", io.BytesIO(b"%PDF-1.4 fake"), "application/pdf"))],
+        )
+
+    assert resp.status_code == 500
+    detail = resp.json()["detail"]
+    assert sentinel not in resp.text
+    assert sentinel not in detail
+    assert detail == "Could not save the uploaded PDF. (ValueError)"
+    assert sentinel in caplog.text
+
+
+def test_pdf_extract_error_does_not_leak_the_exception_text(monkeypatch, caplog):
+    client.post("/session/reset")
+    doc_id = _upload()
+
+    sentinel = "/secret/server/path/file.csv"
+
+    def fail(doc_id):
+        raise ValueError(f"failed extract_pdf for {sentinel}")
+
+    monkeypatch.setattr(pdf_svc, "extract_pdf", fail)
+
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post(f"/pdf/extract/{doc_id}")
+
+    assert resp.status_code == 500
+    detail = resp.json()["detail"]
+    assert sentinel not in resp.text
+    assert sentinel not in detail
+    assert detail == "Extraction failed. (ValueError)"
+    assert sentinel in caplog.text
+
+
+def test_pdf_rationalize_error_does_not_leak_the_exception_text(monkeypatch, caplog):
+    client.post("/session/reset")
+    doc_id = _upload()
+
+    sentinel = "/secret/server/path/file.csv"
+
+    def fail(*args, **kwargs):
+        raise ValueError(f"failed rationalize for {sentinel}")
+
+    monkeypatch.setattr(pdf_svc, "rationalize", fail)
+
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.post(f"/pdf/rationalize/{doc_id}", json=BODY)
+
+    assert resp.status_code == 500
+    detail = resp.json()["detail"]
+    assert sentinel not in resp.text
+    assert sentinel not in detail
+    assert detail == "Rationalization failed. (ValueError)"
+    assert sentinel in caplog.text
+
+
+def test_get_ollama_models_error_does_not_leak_the_exception_text(monkeypatch, caplog):
+    sentinel = "/secret/server/path/file.csv"
+
+    def fail():
+        raise ValueError(f"failed get_ollama_models for {sentinel}")
+
+    monkeypatch.setattr(pdf_svc, "get_ollama_models", fail)
+
+    with caplog.at_level(logging.ERROR, logger="app.error_reporting"):
+        resp = client.get("/pdf/ollama-models")
+
+    assert resp.status_code == 500
+    detail = resp.json()["detail"]
+    assert sentinel not in resp.text
+    assert sentinel not in detail
+    assert detail == "Could not list Ollama models. (ValueError)"
+    assert sentinel in caplog.text
