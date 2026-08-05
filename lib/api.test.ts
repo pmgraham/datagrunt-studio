@@ -232,3 +232,46 @@ describe('gcs api client', () => {
     expect(body.project).toBe('my-proj');
   });
 });
+
+describe('error detail normalization', () => {
+  // Shapes captured from the running backend: FastAPI sends `detail` as a
+  // string for HTTPException but as an array of validation objects for 422,
+  // which used to reach the user as "[object Object]".
+  const failWith = (detail: unknown) =>
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 422, json: async () => ({ detail }) })) as any);
+
+  it('names the offending field for a 422 validation error', async () => {
+    failWith([{ type: 'missing', loc: ['body', 'files'], msg: 'Field required', input: null }]);
+    await expect(listDatasets()).rejects.toThrow('files: Field required');
+  });
+
+  it('joins multiple validation errors into one message', async () => {
+    failWith([
+      { type: 'missing', loc: ['body', 'mode'], msg: 'Field required', input: {} },
+      { type: 'string_type', loc: ['body', 'sql'], msg: 'Input should be a valid string', input: 7 },
+    ]);
+    await expect(listDatasets()).rejects.toThrow('mode: Field required; sql: Input should be a valid string');
+  });
+
+  it('joins a nested loc path into a dotted field name', async () => {
+    failWith([{ type: 'missing', loc: ['body', 'clean_pipeline', 0, 'op'], msg: 'Field required' }]);
+    await expect(listDatasets()).rejects.toThrow('clean_pipeline.0.op: Field required');
+  });
+
+  it('uses the bare message when loc carries no field beyond the location kind', async () => {
+    failWith([{ type: 'model_attributes_type', loc: ['body'], msg: 'Input should be a valid dictionary' }]);
+    await expect(listDatasets()).rejects.toThrow('Input should be a valid dictionary');
+  });
+
+  it('passes a string detail through unchanged', async () => {
+    failWith("Dataset 'does-not-exist' not found");
+    await expect(listDatasets()).rejects.toThrow("Dataset 'does-not-exist' not found");
+  });
+
+  it('falls back to a generic message when detail is absent or unreadable', async () => {
+    failWith(undefined);
+    await expect(listDatasets()).rejects.toThrow('Request failed');
+    failWith([{ type: 'weird' }]);
+    await expect(listDatasets()).rejects.toThrow('Request failed');
+  });
+});
