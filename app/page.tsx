@@ -858,14 +858,9 @@ export default function DatagruntStudio() {
       const mapped = apiDatasets.map(toUiDataset);
       setDatasets(mapped);
       
-      const newlyCreatedMapped = created.map(toUiDataset);
-      setExpandedDatasets((prev) => {
-        const next = new Set(prev);
-        newlyCreatedMapped.forEach((d) => next.add(d.id));
-        return next;
-      });
-      
-      // Automatically expand schemas
+      // Expand the schema groups so the new table names are visible, but leave
+      // the tables themselves collapsed — importing several files at once used
+      // to dump every column list into the sidebar, one collapse click each.
       setExpandedSchemas((prev) => {
         const next = new Set(prev);
         mapped.forEach((d) => {
