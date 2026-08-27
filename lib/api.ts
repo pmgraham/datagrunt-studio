@@ -60,6 +60,34 @@ export interface QueryRequestBody {
   saveAs?: string;
 }
 
+/** One entry of FastAPI's 422 `detail` array. */
+interface ValidationErrorDetail {
+  loc?: (string | number)[];
+  msg?: string;
+}
+
+/**
+ * FastAPI sends `detail` as a plain string for `HTTPException`, but as an array
+ * of validation objects for a 422. Interpolating that array yields
+ * "[object Object]", so unpack it into "field: message" instead.
+ * Returns null when there is nothing readable to show.
+ */
+function describeErrorDetail(detail: unknown): string | null {
+  if (typeof detail === 'string') return detail || null;
+  if (!Array.isArray(detail)) return null;
+
+  const described = (detail as ValidationErrorDetail[])
+    .map((entry) => {
+      if (!entry?.msg) return null;
+      // loc[0] is the location kind ("body"/"query"/"path"); the field path is the rest.
+      const field = (entry.loc ?? []).slice(1).join('.');
+      return field ? `${field}: ${entry.msg}` : entry.msg;
+    })
+    .filter((line): line is string => line !== null);
+
+  return described.length > 0 ? described.join('; ') : null;
+}
+
 async function asJson<T>(res: { ok: boolean; json: () => Promise<any> }): Promise<T> {
   let data: any;
   try {
@@ -69,7 +97,7 @@ async function asJson<T>(res: { ok: boolean; json: () => Promise<any> }): Promis
     // meaningful message rather than letting the parse error mask the real one.
     throw new Error(res.ok ? 'Unexpected non-JSON response' : `Request failed (${(res as any).status ?? 'unknown status'})`);
   }
-  if (!res.ok) throw new Error(data?.detail || 'Request failed');
+  if (!res.ok) throw new Error(describeErrorDetail(data?.detail) ?? 'Request failed');
   return data as T;
 }
 
